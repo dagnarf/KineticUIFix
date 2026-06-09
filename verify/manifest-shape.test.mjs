@@ -92,6 +92,24 @@ test("manifest registers the grid-autofit content script ISOLATED at document_st
   assert.ok(fs.existsSync(path.join(root, "src", "grid-autofit.js")), "src/grid-autofit.js exists");
 });
 
+test("manifest registers the grid focus-scroll guard MAIN-world at document_start", () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
+
+  const entry = manifest.content_scripts.find(
+    (cs) => Array.isArray(cs.js) && cs.js.includes("src/grid-focus-scroll-fix.js")
+  );
+  assert.ok(entry, "an entry delivers src/grid-focus-scroll-fix.js");
+  assert.deepEqual(entry.js, ["src/grid-focus-scroll-fix.js"], "delivers exactly the focus-scroll guard");
+  assert.deepEqual(entry.matches, ["*://*.epicorsaas.com/*"], "scoped to the already-granted Kinetic host");
+  assert.equal(entry.run_at, "document_start", "runs at document_start before Kendo grid focus handling");
+  assert.equal(entry.world, "MAIN", "focus guard must run MAIN-world to wrap Kendo's page-world focus calls");
+  assert.equal(entry.all_frames, false, "top frame only");
+
+  const padEntry = manifest.content_scripts.find((cs) => Array.isArray(cs.js) && cs.js.includes("src/padding-control.js"));
+  assert.notEqual(entry, padEntry, "focus guard is separate from the isolated density injector");
+  assert.ok(fs.existsSync(path.join(root, "src", "grid-focus-scroll-fix.js")), "src/grid-focus-scroll-fix.js exists");
+});
+
 test("required permissions are {scripting,storage,tabs,debugger}; theme/density/autofit add none (§5)", () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
 

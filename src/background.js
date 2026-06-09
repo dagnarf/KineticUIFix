@@ -46,6 +46,7 @@ importScripts("grid-checkbox-style-fix.js");
   var CUSTOM_THEME_SCRIPT_ID = "kinetic-grid-fix-theme-custom-hosts";
   var CUSTOM_DENSITY_SCRIPT_ID = "kinetic-grid-fix-density-custom-hosts";
   var CUSTOM_AUTOFIT_SCRIPT_ID = "kinetic-grid-fix-autofit-custom-hosts";
+  var CUSTOM_FOCUS_SCRIPT_ID = "kinetic-grid-fix-focus-scroll-custom-hosts";
   var DEFAULT_HOST_PATTERNS = ["*://*.epicorsaas.com/*"];
   var attachedTabs = {};
   var inflightRequests = {};
@@ -503,7 +504,7 @@ importScripts("grid-checkbox-style-fix.js");
         return;
       }
 
-      var ids = [CUSTOM_THEME_SCRIPT_ID, CUSTOM_DENSITY_SCRIPT_ID, CUSTOM_AUTOFIT_SCRIPT_ID];
+      var ids = [CUSTOM_THEME_SCRIPT_ID, CUSTOM_DENSITY_SCRIPT_ID, CUSTOM_AUTOFIT_SCRIPT_ID, CUSTOM_FOCUS_SCRIPT_ID];
       chrome.scripting.unregisterContentScripts({ ids: ids }, function(){
         runtimeLastError();
         var matches = normalizeHostPatterns(state && state.customHostPatterns);
@@ -531,6 +532,14 @@ importScripts("grid-checkbox-style-fix.js");
             matches: matches,
             js: ["src/grid-autofit.js"],
             runAt: "document_start",
+            allFrames: false
+          },
+          {
+            id: CUSTOM_FOCUS_SCRIPT_ID,
+            matches: matches,
+            js: ["src/grid-focus-scroll-fix.js"],
+            runAt: "document_start",
+            world: "MAIN",
             allFrames: false
           }
         ], function(){

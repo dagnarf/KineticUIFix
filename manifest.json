@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Kinetic Grid Grouping Fix",
-  "version": "3.17.0",
+  "version": "3.18.0",
   "description": "Fixes Kinetic grid bugs; adds auto-size columns + density slider, scroll buffer, theming, and spacing sliders. Default OFF.",
   "minimum_chrome_version": "114",
   "permissions": [
@@ -36,6 +36,13 @@
       "matches": ["*://*.epicorsaas.com/*"],
       "js": ["src/grid-autofit.js"],
       "run_at": "document_start",
+      "all_frames": false
+    },
+    {
+      "matches": ["*://*.epicorsaas.com/*"],
+      "js": ["src/grid-focus-scroll-fix.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
       "all_frames": false
     }
   ],
