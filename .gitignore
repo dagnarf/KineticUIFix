@@ -1,0 +1,6 @@
+.DS_Store
+node_modules/
+dist/
+.tmp/
+.output/
+scripts/cws-publish/credentials.json

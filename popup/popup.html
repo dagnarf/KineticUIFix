@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kinetic UI Fixes</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header class="hdr">
+    <img class="hdr-icon" src="../icons/icon48.png" alt="" width="28" height="28" />
+    <div class="hdr-text">
+      <h1>Kinetic UI Fixes</h1>
+      <p class="sub">Grid fixes · theming · colors</p>
+    </div>
+  </header>
+
+  <!-- Grid fixes (group/ungroup leak, blank-after-load, checkbox style) — delivered via debugger/runtime. -->
+  <section class="toggle-row">
+    <div class="toggle-label">
+      <span class="toggle-title">Grid fixes</span>
+      <span id="toggle-state" class="toggle-state state-off">Off</span>
+    </div>
+    <button
+      id="toggle"
+      type="button"
+      role="switch"
+      aria-checked="false"
+      aria-label="Enable Kinetic grid fixes"
+      class="switch">
+      <span class="switch-track"><span class="switch-thumb"></span></span>
+    </button>
+  </section>
+
+  <p id="apply-hint" class="hint" hidden>
+    Reload the Kinetic tab to apply the change.
+  </p>
+
+  <!-- Bigger scroll buffer — rides the same debugger/runtime grid-fix delivery (reload-gated). Renders a
+       larger virtual window so fast scrolls stay populated instead of flashing blank. Most effective in
+       Debugger mode (where the grid hook reliably engages). -->
+  <section class="toggle-row">
+    <div class="toggle-label">
+      <span class="toggle-title">Bigger scroll buffer</span>
+      <span id="toggle-scroll-buffer-state" class="toggle-state state-off">Off</span>
+    </div>
+    <button
+      id="toggle-scroll-buffer"
+      type="button"
+      role="switch"
+      aria-checked="false"
+      aria-label="Render a bigger virtual scroll buffer so fast scrolls stay populated"
+      class="switch">
+      <span class="switch-track"><span class="switch-thumb"></span></span>
+    </button>
+  </section>
+
+  <p class="hint-static">Reduces the blank flash when scrolling fast. Needs <b>Grid fixes</b> on (best in <b>Debugger</b> mode); reload the Kinetic tab to apply.</p>
+
+  <!-- Auto-size columns (separate ISOLATED-world injector) — measures each column's content on every
+       dataset load and pins the matching column widths. Applies LIVE, no reload. -->
+  <section class="toggle-row">
+    <div class="toggle-label">
+      <span class="toggle-title">Auto-size columns</span>
+      <span id="toggle-autofit-state" class="toggle-state state-off">Off</span>
+    </div>
+    <button
+      id="toggle-autofit"
+      type="button"
+      role="switch"
+      aria-checked="false"
+      aria-label="Auto-size Kinetic grid columns to their content on each dataset load"
+      class="switch">
+      <span class="switch-track"><span class="switch-thumb"></span></span>
+    </button>
+  </section>
+
+  <p class="hint hint-static">Fits each column to its widest visible value whenever a grid loads new rows.</p>
+
+  <!-- Column density: scales the spacing the auto-fit adds around each column's content (and the per-column
+       max width), so the user can dial maximum horizontal information density. 100% = native-faithful fit;
+       lower = tighter columns (more fit on screen); higher = roomier. Inert unless Auto-size columns is on. -->
+  <div class="pad-row autofit-density">
+    <label for="autofit-density">Column spacing</label>
+    <input
+      type="range"
+      id="autofit-density"
+      class="pad-slider"
+      min="0.5" max="1.5" step="0.05" value="1"
+      aria-label="Auto-size column spacing density" />
+    <code class="pad-pct" id="autofit-density-pct">100%</code>
+    <button id="autofit-density-reset" type="button" class="clr-reset" aria-label="Reset column spacing to default">Reset</button>
+  </div>
+  <p class="hint hint-static">Lower = tighter columns (more fit on screen); higher = roomier. Needs <b>Auto-size columns</b> on.</p>
+
+  <!-- Theming controls (separate ISOLATED-world CSS injector) — apply LIVE, no reload. -->
+  <section class="toggle-row">
+    <div class="toggle-label">
+      <span class="toggle-title">Disable theming</span>
+      <span id="toggle-theme-disable-state" class="toggle-state state-off">Off</span>
+    </div>
+    <button
+      id="toggle-theme-disable"
+      type="button"
+      role="switch"
+      aria-checked="false"
+      aria-label="Disable Kinetic UI theming (pin the stock palette)"
+      class="switch">
+      <span class="switch-track"><span class="switch-thumb"></span></span>
+    </button>
+  </section>
+
+  <section class="toggle-row">
+    <div class="toggle-label">
+      <span class="toggle-title">Override colors</span>
+      <span id="toggle-color-override-state" class="toggle-state state-off">Off</span>
+    </div>
+    <button
+      id="toggle-color-override"
+      type="button"
+      role="switch"
+      aria-checked="false"
+      aria-label="Override Kinetic theme colors"
+      class="switch">
+      <span class="switch-track"><span class="switch-thumb"></span></span>
+    </button>
+  </section>
+
+  <!-- Color-picker panel: theme family rows (rendered by popup.js from FAMILIES) plus the surface/neutral
+       tint, all revealed by the "Override colors" toggle and cleared together by "Reset all to stock". -->
+  <section id="color-panel" class="color-panel" hidden aria-hidden="true">
+    <div id="color-rows" class="color-rows"></div>
+    <div class="clr-row neutral-row">
+      <label for="clr-neutral">Neutral tint</label>
+      <input type="color" id="clr-neutral" class="clr-swatch" aria-label="Neutral tint color" />
+      <code class="clr-hex" id="hex-neutral"></code>
+      <button id="neutral-reset" type="button" class="clr-reset" aria-label="Clear the neutral tint">Reset</button>
+    </div>
+    <div id="color-footer" class="color-footer">
+      <button id="clr-reset-all" type="button" class="clr-reset-all">Reset all to stock</button>
+    </div>
+  </section>
+
+  <p id="theme-status" class="theme-status">Theming: —</p>
+
+  <!-- Padding & spacing (density) controls — a disclosure of per-component-family sliders, like the
+       Advanced link below. Family groups + rows are rendered by popup.js from FAMILIES. ISOLATED-world
+       targeted-override injector; applies LIVE, no reload. -->
+  <details id="padding" class="padding">
+    <summary>Padding &amp; spacing</summary>
+    <p class="pad-intro">Fine-tune the size of each Kinetic component type. Applies live on a Kinetic tab; drag a slider back to 100% (or Reset) to restore the stock spacing.</p>
+    <div id="pad-rows" class="pad-rows"></div>
+    <div class="pad-footer">
+      <button id="pad-reset-all" type="button" class="clr-reset-all">Reset all to default</button>
+    </div>
+  </details>
+
+  <p id="padding-status" class="theme-status">Spacing: —</p>
+
+  <section class="status">
+    <h2>Grid status on this tab</h2>
+    <dl class="status-grid">
+      <dt>Patched</dt><dd id="st-applied">—</dd>
+      <dt>Mode</dt><dd id="st-mode">—</dd>
+      <dt>Bundle</dt><dd id="st-bundle">—</dd>
+      <dt>Anchors</dt><dd id="st-anchors">—</dd>
+    </dl>
+    <p id="st-note" class="status-note"></p>
+  </section>
+
+  <details class="advanced">
+    <summary>Advanced</summary>
+    <div class="adv-row">
+      <label for="mode">Mechanism</label>
+      <select id="mode">
+        <option value="runtime">Runtime hook (no banner)</option>
+        <option value="debugger">Debugger (in-place rewrite)</option>
+      </select>
+    </div>
+    <p id="mode-note" class="adv-note"></p>
+    <div class="adv-row">
+      <label for="scope">Scope</label>
+      <select id="scope">
+        <option value="kinetic-only">Kinetic main.js only</option>
+        <option value="all">All matched scripts</option>
+      </select>
+    </div>
+    <div class="adv-hosts">
+      <label for="custom-host">Additional host</label>
+      <div class="host-add-row">
+        <input id="custom-host" type="text" inputmode="url" spellcheck="false" placeholder="tenant.example.com or *.example.com" />
+        <button id="custom-host-add" type="button">Add</button>
+      </div>
+      <ul id="custom-host-list" class="host-list"></ul>
+      <p id="custom-host-note" class="adv-note host-note"></p>
+    </div>
+  </details>
+
+  <footer class="ftr">
+    <span id="version" class="version"></span>
+    <span class="spacer"></span>
+    <span class="default-note">Default: OFF</span>
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "name": "@epicor-toolkit/kinetic-grid-fix-extension",
+  "private": true,
+  "version": "3.17.0",
+  "type": "module",
+  "description": "Manifest V3 extension for Epicor Kinetic: fixes three main.js grid defects (group/ungroup virtualization-defeat memory leak via the binding-directive rebind layer, blank-viewport-after-bulk-load misalignment via a virtual-scroll alignment watchdog, and boolean checkbox-glyph presentation drift via a scoped style standardizer); adds an auto-size-columns injector (measures rendered cells — including each cell's real padding/border for native-parity sizing — and pins each column's <col> width to its content on every dataset load, with a Column-spacing density slider for maximum horizontal information density — ISOLATED world, live) and an opt-in bigger virtual scroll buffer (renders ~4x the grid's natural window via the rebind hook so fast scrolls stay populated — baked into the patched bundle, debugger-mode); plus live theming controls (disable-theming pins the stock palette; per-family custom colors) and per-component-family density/padding sliders (targeted !important overrides matched to each Kendo/Epicor component family's real selectors — grids, buttons, text fields, dropdowns, tabs, labels) delivered by ISOLATED-world CSS injectors. Debugger rewrite and extra hosts are optional user grants. All features default OFF.",
+  "scripts": {
+    "check": "node --check src/background.js && node --check src/grid-revirtualize-fix.js && node --check src/grid-blank-fix.js && node --check src/grid-checkbox-style-fix.js && node --check src/patch-transform.js && node --check src/inject-main-world.js && node --check src/theme-control.js && node --check src/padding-control.js && node --check src/grid-autofit.js",
+    "smoke:m1": "node verify/m1-synthetic-smoke.mjs",
+    "test": "node --test verify/*.test.mjs",
+    "build": "node scripts/build-store-zip.mjs",
+    "package": "npm run check && npm test && npm run build",
+    "store-assets": "node store/render-assets.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

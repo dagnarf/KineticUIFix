@@ -1,0 +1,58 @@
+{
+  "manifest_version": 3,
+  "name": "Kinetic Grid Grouping Fix",
+  "version": "3.17.0",
+  "description": "Fixes Kinetic grid bugs; adds auto-size columns + density slider, scroll buffer, theming, and spacing sliders. Default OFF.",
+  "minimum_chrome_version": "114",
+  "permissions": [
+    "scripting",
+    "storage",
+    "tabs",
+    "debugger"
+  ],
+  "host_permissions": [
+    "*://*.epicorsaas.com/*"
+  ],
+  "optional_host_permissions": [
+    "*://*/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.epicorsaas.com/*"],
+      "js": ["src/theme-control.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    },
+    {
+      "matches": ["*://*.epicorsaas.com/*"],
+      "js": ["src/padding-control.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    },
+    {
+      "matches": ["*://*.epicorsaas.com/*"],
+      "js": ["src/grid-autofit.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "action": {
+    "default_title": "Kinetic Grid Grouping Fix",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
