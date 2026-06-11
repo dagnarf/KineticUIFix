@@ -44,7 +44,7 @@
 (function (root) {
   "use strict";
 
-  var VERSION = "3.0.0";
+  var VERSION = "3.1.0";
   var API_KEY = "__KINETIC_GRID_REVIRT__";
   var MARKER_KEY = "__KINETIC_GRID_FIX__";
   var HOOK_GLOBAL = "__KINETIC_GRID_FIX_HOOK__";
@@ -69,6 +69,88 @@
       if (!bd || typeof bd !== "object") {
         return;
       }
+
+      // DENSITY ROW-HEIGHT SYNC (v3.1): when the padding-control density feature compacts grid rows
+      // (documentElement dataset marker, grid.rowHeight factor != 1), Kinetic's calculateModelRowHeight
+      // measures the row but CLAMPS model.rowHeight to a >= getImageRowHeight() floor (~25px), so the
+      // compacted ~15px rows never reach Kendo and ALL of its position math (focus restore, keyboard-nav
+      // anchor, scrollIntoView, click row mapping, virtual offsets) runs ~1.5x off the real layout.
+      // Live-confirmed (2026-06-09, Order Tracker landing grid, Fourth): after an arrow-key-triggered
+      // virtual page-append the stale focus anchor freezes scroll-follow, runs the selection off-screen,
+      // reverts user scrolls back to the anchor, and maps clicks to the wrong row (clicked 84 -> focus 66).
+      // Cure (validated live the same session): measure this grid's own rendered row on every rebind;
+      // while compaction is active and the model disagrees by > 1px, pin model.rowHeight + the Kendo
+      // grid's rowHeight to the measured height, and per-instance patch the getImageRowHeight floor so
+      // Kinetic's own recalcs (it re-runs calculateModelRowHeight after appends) keep the synced value.
+      try {
+        var Wd = (typeof window !== "undefined") ? window : null;
+        var dsRaw = Wd && Wd.document && Wd.document.documentElement && Wd.document.documentElement.dataset
+          ? Wd.document.documentElement.dataset.kineticPaddingControl
+          : null;
+        if (dsRaw) {
+          var pmk = null;
+          try { pmk = JSON.parse(dsRaw); } catch (ePm) { pmk = null; }
+          var dense = false;
+          if (pmk && pmk.active === true && pmk.adjustments && typeof pmk.adjustments.length === "number") {
+            for (var ai = 0; ai < pmk.adjustments.length; ai += 1) {
+              var adj = pmk.adjustments[ai];
+              if (adj && adj.family === "grid" && adj.dim === "rowHeight"
+                && Math.abs(Number(adj.factor) - 1) > 1e-9) {
+                dense = true;
+                break;
+              }
+            }
+          }
+          var egd = bd.epGrid;
+          if (dense && egd && egd.model && typeof egd.getCurrentRowElement === "function") {
+            var row0 = egd.getCurrentRowElement(0);
+            var realH = row0 && row0.clientHeight ? row0.clientHeight : 0;
+            // Mirror calculateModelRowHeight's own clientHeight-2 semantics so the synced value sits in
+            // the same coordinate system Kinetic writes.
+            var wantH = realH > 2 ? realH - 2 : 0;
+            if (wantH > 0) {
+              if (!egd.__kgfImgFloorPatched) {
+                var origImg = typeof egd.getImageRowHeight === "function" ? egd.getImageRowHeight.bind(egd) : null;
+                egd.getImageRowHeight = function () {
+                  try {
+                    var r0 = egd.getCurrentRowElement(0);
+                    var rh = r0 && r0.clientHeight ? r0.clientHeight - 2 : 0;
+                    var o = origImg ? origImg() : 23;
+                    return (rh > 0 && rh < o) ? rh : o;
+                  } catch (eImg) {
+                    return 23;
+                  }
+                };
+                egd.__kgfImgFloorPatched = true;
+              }
+              var curH = Number(egd.model.rowHeight);
+              if (!(curH > 0) || Math.abs(curH - wantH) > 1) {
+                egd.model.rowHeight = wantH;
+                try {
+                  if (bd.grid && typeof bd.grid === "object") {
+                    bd.grid.rowHeight = wantH;
+                  }
+                } catch (eGr) {
+                  /* ignore */
+                }
+                try {
+                  if (Wd) {
+                    var mkd = Wd.__KINETIC_GRID_FIX__ || {};
+                    mkd.rowHeightSyncs = (mkd.rowHeightSyncs | 0) + 1;
+                    mkd.lastRowHeightSync = wantH;
+                    Wd.__KINETIC_GRID_FIX__ = mkd;
+                  }
+                } catch (eMk) {
+                  /* ignore */
+                }
+              }
+            }
+          }
+        }
+      } catch (eDense) {
+        /* never throw into the page */
+      }
+
       var state = bd.state;
       if (!state || typeof state !== "object") {
         return;

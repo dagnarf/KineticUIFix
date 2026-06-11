@@ -92,6 +92,29 @@ test("manifest registers the grid-autofit content script ISOLATED at document_st
   assert.ok(fs.existsSync(path.join(root, "src", "grid-autofit.js")), "src/grid-autofit.js exists");
 });
 
+test("manifest registers the grid-header-wrap content script ISOLATED at document_start", () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
+
+  const entry = manifest.content_scripts.find(
+    (cs) => Array.isArray(cs.js) && cs.js.includes("src/grid-header-wrap.js")
+  );
+  assert.ok(entry, "an entry delivers src/grid-header-wrap.js");
+  assert.deepEqual(entry.js, ["src/grid-header-wrap.js"], "delivers exactly the header-wrap injector");
+  assert.deepEqual(entry.matches, ["*://*.epicorsaas.com/*"], "scoped to the already-granted Kinetic host");
+  assert.equal(entry.run_at, "document_start", "runs at document_start");
+  assert.equal(entry.all_frames, false, "top frame only");
+  // ISOLATED world (default): the injector needs chrome.storage and only touches the shared DOM. It must
+  // NOT run MAIN — it never rewrites main.js and never needs the page's JS objects.
+  assert.notEqual(entry.world, "MAIN", "header-wrap injector runs ISOLATED, never MAIN world");
+  assert.ok(!("world" in entry), "ISOLATED is expressed by omitting the world key");
+
+  // Distinct entry from autofit (each feature stays an independent content_scripts entry).
+  const autofitEntry = manifest.content_scripts.find((cs) => Array.isArray(cs.js) && cs.js.includes("src/grid-autofit.js"));
+  assert.notEqual(entry, autofitEntry, "header-wrap + autofit are distinct entries");
+
+  assert.ok(fs.existsSync(path.join(root, "src", "grid-header-wrap.js")), "src/grid-header-wrap.js exists");
+});
+
 test("manifest registers the grid focus-scroll guard MAIN-world at document_start", () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
 

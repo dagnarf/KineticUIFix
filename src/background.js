@@ -33,19 +33,22 @@ importScripts("grid-checkbox-style-fix.js");
   // Density/padding feature (src/padding-control.js). Same delivery class as the theme keys: the
   // ISOLATED-world content script owns ALL behavior and applies it live; this service worker only seeds
   // the default and mirrors it on the badge. NEVER routed through the debugger / reload path.
-  var DENSITY_STATE_KEYS = ["componentDensity"];
-  var DENSITY_DEFAULT_STATE = { componentDensity: {} };
+  var DENSITY_STATE_KEYS = ["componentDensity", "fullWidthEnabled"];
+  var DENSITY_DEFAULT_STATE = { componentDensity: {}, fullWidthEnabled: false };
   // Auto-size-columns feature (src/grid-autofit.js). Same delivery class as the theme/density keys: the
   // ISOLATED-world content script owns ALL behavior and applies it live (measure rendered cells -> pin
   // <col> widths) on each dataset load; this service worker only seeds the default and mirrors it on the
   // badge. NEVER routed through the debugger / reload path.
-  var AUTOFIT_STATE_KEYS = ["gridAutoSizeEnabled"];
-  var AUTOFIT_DEFAULT_STATE = { gridAutoSizeEnabled: false };
+  // gridHeaderWrapEnabled (src/grid-header-wrap.js) rides the SAME live-ISOLATED delivery class: line-wraps
+  // grid header titles + narrows header-bound columns, badge only, never the debugger/reload path.
+  var AUTOFIT_STATE_KEYS = ["gridAutoSizeEnabled", "gridHeaderWrapEnabled"];
+  var AUTOFIT_DEFAULT_STATE = { gridAutoSizeEnabled: false, gridHeaderWrapEnabled: false };
   var PROTOCOL_VERSION = "1.3";
   var MAIN_WORLD_SCRIPT_ID = "kinetic-grid-fix-main-world";
   var CUSTOM_THEME_SCRIPT_ID = "kinetic-grid-fix-theme-custom-hosts";
   var CUSTOM_DENSITY_SCRIPT_ID = "kinetic-grid-fix-density-custom-hosts";
   var CUSTOM_AUTOFIT_SCRIPT_ID = "kinetic-grid-fix-autofit-custom-hosts";
+  var CUSTOM_HEADER_WRAP_SCRIPT_ID = "kinetic-grid-fix-header-wrap-custom-hosts";
   var CUSTOM_FOCUS_SCRIPT_ID = "kinetic-grid-fix-focus-scroll-custom-hosts";
   var DEFAULT_HOST_PATTERNS = ["*://*.epicorsaas.com/*"];
   var attachedTabs = {};
@@ -126,7 +129,8 @@ importScripts("grid-checkbox-style-fix.js");
       callback({
         componentDensity: (values.componentDensity && typeof values.componentDensity === "object")
           ? values.componentDensity
-          : {}
+          : {},
+        fullWidthEnabled: values.fullWidthEnabled === true
       });
     });
   }
@@ -134,7 +138,8 @@ importScripts("grid-checkbox-style-fix.js");
   function withAutofitState(callback){
     chrome.storage.local.get(AUTOFIT_DEFAULT_STATE, function(values){
       callback({
-        gridAutoSizeEnabled: values.gridAutoSizeEnabled === true
+        gridAutoSizeEnabled: values.gridAutoSizeEnabled === true,
+        gridHeaderWrapEnabled: values.gridHeaderWrapEnabled === true
       });
     });
   }
@@ -156,6 +161,10 @@ importScripts("grid-checkbox-style-fix.js");
     if (autofit && autofit.gridAutoSizeEnabled === true){
       labels.push("auto-size columns");
     }
+    // "wrap headers" applies live (ISOLATED content script), so it carries no reload hint.
+    if (autofit && autofit.gridHeaderWrapEnabled === true){
+      labels.push("wrap headers");
+    }
     if (theme.themeDisableEnabled === true){
       labels.push("theming off");
     }
@@ -174,6 +183,9 @@ importScripts("grid-checkbox-style-fix.js");
       && density.componentDensity
       && Object.keys(density.componentDensity).length > 0){
       labels.push("spacing adjusted");
+    }
+    if (density && density.fullWidthEnabled === true){
+      labels.push("full width");
     }
     return labels;
   }
@@ -252,10 +264,17 @@ importScripts("grid-checkbox-style-fix.js");
       if (!values.componentDensity || typeof values.componentDensity !== "object"){
         updates.componentDensity = {};
       }
+      if (typeof values.fullWidthEnabled !== "boolean"){
+        updates.fullWidthEnabled = DENSITY_DEFAULT_STATE.fullWidthEnabled;
+      }
       // Seed the auto-size flag so install/startup is genuinely default-OFF. Seeding storage does NOT
       // attach the debugger or reload anything — the content script self-gates on this flag.
       if (typeof values.gridAutoSizeEnabled !== "boolean"){
         updates.gridAutoSizeEnabled = AUTOFIT_DEFAULT_STATE.gridAutoSizeEnabled;
+      }
+      // Seed the header-wrap flag so install/startup is genuinely default-OFF. The content script self-gates.
+      if (typeof values.gridHeaderWrapEnabled !== "boolean"){
+        updates.gridHeaderWrapEnabled = AUTOFIT_DEFAULT_STATE.gridHeaderWrapEnabled;
       }
 
       var names = Object.keys(updates);
@@ -504,7 +523,7 @@ importScripts("grid-checkbox-style-fix.js");
         return;
       }
 
-      var ids = [CUSTOM_THEME_SCRIPT_ID, CUSTOM_DENSITY_SCRIPT_ID, CUSTOM_AUTOFIT_SCRIPT_ID, CUSTOM_FOCUS_SCRIPT_ID];
+      var ids = [CUSTOM_THEME_SCRIPT_ID, CUSTOM_DENSITY_SCRIPT_ID, CUSTOM_AUTOFIT_SCRIPT_ID, CUSTOM_HEADER_WRAP_SCRIPT_ID, CUSTOM_FOCUS_SCRIPT_ID];
       chrome.scripting.unregisterContentScripts({ ids: ids }, function(){
         runtimeLastError();
         var matches = normalizeHostPatterns(state && state.customHostPatterns);
@@ -531,6 +550,13 @@ importScripts("grid-checkbox-style-fix.js");
             id: CUSTOM_AUTOFIT_SCRIPT_ID,
             matches: matches,
             js: ["src/grid-autofit.js"],
+            runAt: "document_start",
+            allFrames: false
+          },
+          {
+            id: CUSTOM_HEADER_WRAP_SCRIPT_ID,
+            matches: matches,
+            js: ["src/grid-header-wrap.js"],
             runAt: "document_start",
             allFrames: false
           },
@@ -869,10 +895,10 @@ importScripts("grid-checkbox-style-fix.js");
       || changes.colorOverrideValues
       || changes.neutralTintEnabled
       || changes.neutralTintHex);
-    var densityChanged = !!(changes.componentDensity);
+    var densityChanged = !!(changes.componentDensity || changes.fullWidthEnabled);
     // Auto-size-columns is the same delivery class as theme/density: live ISOLATED content script, badge
     // only, NEVER the debugger/reload path.
-    var autofitChanged = !!(changes.gridAutoSizeEnabled);
+    var autofitChanged = !!(changes.gridAutoSizeEnabled || changes.gridHeaderWrapEnabled);
     // Grid keys drive the debugger/runtime delivery mechanism (attach + hard reload). The scroll buffer
     // is baked into the same patched bundle, so toggling it must re-run delivery + reload too.
     var gridChanged = !!(changes.gridFixEnabled || changes.gridFixMode || changes.gridScrollBufferEnabled);

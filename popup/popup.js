@@ -15,11 +15,17 @@
     neutralTintEnabled: false,
     neutralTintHex: "",
     componentDensity: {},
+    textAreaAutoSizeEnabled: false,
+    fullWidthEnabled: false,
     // gridAutoSizeEnabled drives the ISOLATED-world auto-size-columns injector (src/grid-autofit.js) and
     // applies LIVE with no reload, same delivery class as theme*/componentDensity. gridAutoFitDensity is the
     // companion "Column spacing" slider — a factor in [0.5,1.5] (1 = native-faithful fit, lower = denser).
     gridAutoSizeEnabled: false,
     gridAutoFitDensity: 1,
+    // gridHeaderWrapEnabled drives the ISOLATED-world header-wrap injector (src/grid-header-wrap.js): it
+    // line-wraps grid header titles + narrows header-bound columns, live with no reload. Same delivery class
+    // as gridAutoSizeEnabled; pairs with it (auto-size owns widths when both are on).
+    gridHeaderWrapEnabled: false,
     customHostPatterns: []
   };
 
@@ -239,6 +245,11 @@
     { key: "label", label: "Field labels", dims: [
       { key: "font", label: "Text size", min: 0.8, max: 1.6, step: 0.05, def: 1 }
     ] },
+    { key: "tag", label: "Tags & options", dims: [
+      { key: "height", label: "Tag height", min: 0.65, max: 1.4, step: 0.05, def: 1 },
+      { key: "padding", label: "Tag padding", min: 0.2, max: 1.5, step: 0.05, def: 1 },
+      { key: "font", label: "Text size", min: 0.8, max: 1.4, step: 0.05, def: 1 }
+    ] },
     { key: "card", label: "Cards & layout", dims: [
       { key: "gutter", label: "Column gutter", min: 0.1, max: 1.5, step: 0.05, def: 1 },
       { key: "cardPad", label: "Card padding", min: 0, max: 1.5, step: 0.05, def: 1 },
@@ -314,6 +325,25 @@
     return out;
   }
 
+  // Build a full componentDensity map with every known dimension pinned to one extreme — "min" drives
+  // every slider to its floor, "max" to its ceiling. A dimension whose extreme equals its default is
+  // omitted (storage only ever holds real adjustments, mirroring nextComponentDensity's pruning).
+  function componentDensityPreset(extreme) {
+    var out = {};
+    var wantMax = extreme === "max";
+    for (var i = 0; i < FAMILIES_PAD.length; i += 1) {
+      var fam = FAMILIES_PAD[i];
+      for (var j = 0; j < fam.dims.length; j += 1) {
+        var dim = fam.dims[j];
+        var f = wantMax ? dim.max : dim.min;
+        if (isDefaultFactor(fam.key, dim.key, f)) { continue; }
+        if (!out[fam.key]) { out[fam.key] = {}; }
+        out[fam.key][dim.key] = f;
+      }
+    }
+    return out;
+  }
+
   // Count dimensions across all families that actually contribute (known + non-default clamped factor).
   function countComponentAdjustments(values) {
     var n = 0;
@@ -333,24 +363,32 @@
   function densityStatusText(marker, storeState) {
     if (marker && typeof marker === "object") {
       var adj = Array.isArray(marker.adjustments) ? marker.adjustments.length : 0;
+      var textAuto = marker.textAreaAutoSize === true;
+      var fullWidth = marker.fullWidth === true;
+      var suffix = (fullWidth ? " + full width" : "") + (textAuto ? " + text areas" : "");
       if (marker.active === true && adj > 0) {
-        return "Custom — " + adj + (adj === 1 ? " adjustment" : " adjustments");
+        return "Custom — " + adj + (adj === 1 ? " adjustment" : " adjustments") + suffix;
       }
+      if (fullWidth) { return textAuto ? "Full width + text areas" : "Full width"; }
+      if (textAuto) { return "Text areas auto-size"; }
       return "Default spacing";
     }
     var ss = storeState || {};
     var n = countComponentAdjustments(ss.componentDensity);
-    if (n > 0) { return "Custom (" + n + ") — applies on a Kinetic tab"; }
+    var storeSuffix = (ss.fullWidthEnabled === true ? " + full width" : "") + (ss.textAreaAutoSizeEnabled === true ? " + text areas" : "");
+    if (n > 0) { return "Custom (" + n + ")" + storeSuffix + " — applies on a Kinetic tab"; }
+    if (ss.fullWidthEnabled === true) { return (ss.textAreaAutoSizeEnabled === true ? "Full width + text areas" : "Full width") + " — applies on a Kinetic tab"; }
+    if (ss.textAreaAutoSizeEnabled === true) { return "Text areas auto-size — applies on a Kinetic tab"; }
     return "Default spacing";
   }
 
   function isDensityActive(marker, storeState) {
     if (marker && typeof marker === "object") {
       var adj = Array.isArray(marker.adjustments) ? marker.adjustments.length : 0;
-      return marker.active === true && adj > 0;
+      return (marker.active === true && adj > 0) || marker.textAreaAutoSize === true || marker.fullWidth === true;
     }
     var ss = storeState || {};
-    return countComponentAdjustments(ss.componentDensity) > 0;
+    return countComponentAdjustments(ss.componentDensity) > 0 || ss.textAreaAutoSizeEnabled === true || ss.fullWidthEnabled === true;
   }
 
   function hostLabelFromPattern(pattern) {
@@ -479,6 +517,7 @@
     isDefaultFactor: isDefaultFactor,
     factorPct: factorPct,
     nextComponentDensity: nextComponentDensity,
+    componentDensityPreset: componentDensityPreset,
     countComponentAdjustments: countComponentAdjustments,
     densityStatusText: densityStatusText,
     isDensityActive: isDensityActive,
@@ -502,19 +541,25 @@
   var scrollBufferToggle, scrollBufferState;
   var autofitToggle, autofitState;
   var autofitDensitySlider, autofitDensityPct, autofitDensityReset;
+  var headerWrapToggle, headerWrapState;
   var themeDisableToggle, themeDisableState, colorOverrideToggle, colorOverrideState;
   var colorPanel, colorRows, colorFooter, resetAllBtn, themeStatusEl;
   var neutralSwatch, neutralHexLabel, neutralReset;
-  var padRows, padResetAll, paddingStatusEl;
+  var fullWidthToggle, fullWidthState;
+  var textAreaAutoSizeToggle, textAreaAutoSizeState;
+  var padRows, padResetAll, padPresetMin, padPresetMax, paddingStatusEl;
   var customHostInput, customHostAdd, customHostList, customHostNote;
 
   var lastEnabled = DEFAULTS.gridFixEnabled;
   var lastScrollBuffer = DEFAULTS.gridScrollBufferEnabled;
   var lastAutofit = DEFAULTS.gridAutoSizeEnabled;
   var lastAutofitDensity = DEFAULTS.gridAutoFitDensity;
+  var lastHeaderWrap = DEFAULTS.gridHeaderWrapEnabled;
   var lastThemeDisable = DEFAULTS.themeDisableEnabled;
   var lastColorOverride = DEFAULTS.colorOverrideEnabled;
   var lastNeutralTint = DEFAULTS.neutralTintEnabled;
+  var lastFullWidth = DEFAULTS.fullWidthEnabled;
+  var lastTextAreaAutoSize = DEFAULTS.textAreaAutoSizeEnabled;
   var neutralHex = "";
   var overrideValues = {};
   var swatchInputs = {};
@@ -644,6 +689,26 @@
   function onAutofitDensityReset() {
     reflectAutofitDensity(AUTOFIT_DENSITY_DEF);
     persist({ gridAutoFitDensity: AUTOFIT_DENSITY_DEF });
+  }
+
+  // Wrap column headers — line-wraps multi-word grid header titles so they stack vertically and narrows the
+  // columns whose width was only dictated by a long one-line header. Live ISOLATED injector, no reload.
+  function reflectHeaderWrap(on) {
+    lastHeaderWrap = on === true;
+    if (headerWrapToggle) {
+      headerWrapToggle.setAttribute("aria-checked", lastHeaderWrap ? "true" : "false");
+    }
+    if (headerWrapState) {
+      headerWrapState.textContent = lastHeaderWrap ? "On" : "Off";
+      headerWrapState.className = "toggle-state " + (lastHeaderWrap ? "state-on" : "state-off");
+    }
+  }
+
+  function onHeaderWrapToggle() {
+    var next = !lastHeaderWrap;
+    reflectHeaderWrap(next);
+    // Applies live on a Kinetic tab — no reload hint.
+    persist({ gridHeaderWrapEnabled: next });
   }
 
   // ---- Theme controls (new) ----------------------------------------------------------------------
@@ -824,6 +889,42 @@
 
   // ---- Density / padding controls (per component family) ------------------------------------------
 
+  function reflectFullWidth(on) {
+    lastFullWidth = on === true;
+    if (fullWidthToggle) {
+      fullWidthToggle.setAttribute("aria-checked", lastFullWidth ? "true" : "false");
+    }
+    if (fullWidthState) {
+      fullWidthState.textContent = lastFullWidth ? "On" : "Off";
+      fullWidthState.className = "toggle-state " + (lastFullWidth ? "state-on" : "state-off");
+    }
+  }
+
+  function onFullWidthToggle() {
+    var next = !lastFullWidth;
+    reflectFullWidth(next);
+    persist({ fullWidthEnabled: next });
+    refreshPaddingStatusSoon();
+  }
+
+  function reflectTextAreaAutoSize(on) {
+    lastTextAreaAutoSize = on === true;
+    if (textAreaAutoSizeToggle) {
+      textAreaAutoSizeToggle.setAttribute("aria-checked", lastTextAreaAutoSize ? "true" : "false");
+    }
+    if (textAreaAutoSizeState) {
+      textAreaAutoSizeState.textContent = lastTextAreaAutoSize ? "On" : "Off";
+      textAreaAutoSizeState.className = "toggle-state " + (lastTextAreaAutoSize ? "state-on" : "state-off");
+    }
+  }
+
+  function onTextAreaAutoSizeToggle() {
+    var next = !lastTextAreaAutoSize;
+    reflectTextAreaAutoSize(next);
+    persist({ textAreaAutoSizeEnabled: next });
+    refreshPaddingStatusSoon();
+  }
+
   // Build a group per family, each with one slider row per dimension. Skipped cleanly when
   // createElement/appendChild are unavailable (the headless test harness), so minimal-DOM tests pass.
   function buildSliderRows() {
@@ -940,6 +1041,14 @@
     componentDensity = {};
     hydrateSliders();
     persist({ componentDensity: {} });
+    refreshPaddingStatusSoon();
+  }
+
+  // Min / Max presets: pin every slider across all families to its floor / ceiling in one click.
+  function onPadPreset(extreme) {
+    componentDensity = componentDensityPreset(extreme);
+    hydrateSliders();
+    persist({ componentDensity: componentDensity });
     refreshPaddingStatusSoon();
   }
 
@@ -1165,7 +1274,7 @@
 
   function renderPaddingStatus(marker) {
     if (!paddingStatusEl) { return; }
-    var ss = { componentDensity: componentDensity };
+    var ss = { componentDensity: componentDensity, textAreaAutoSizeEnabled: lastTextAreaAutoSize, fullWidthEnabled: lastFullWidth };
     paddingStatusEl.textContent = "Spacing: " + densityStatusText(marker, ss);
     paddingStatusEl.className = "theme-status" + (isDensityActive(marker, ss) ? " ts-on" : "");
   }
@@ -1232,6 +1341,8 @@
     autofitDensitySlider = document.getElementById("autofit-density");
     autofitDensityPct = document.getElementById("autofit-density-pct");
     autofitDensityReset = document.getElementById("autofit-density-reset");
+    headerWrapToggle = document.getElementById("toggle-header-wrap");
+    headerWrapState = document.getElementById("toggle-header-wrap-state");
     themeDisableToggle = document.getElementById("toggle-theme-disable");
     themeDisableState = document.getElementById("toggle-theme-disable-state");
     colorOverrideToggle = document.getElementById("toggle-color-override");
@@ -1244,8 +1355,14 @@
     neutralSwatch = document.getElementById("clr-neutral");
     neutralHexLabel = document.getElementById("hex-neutral");
     neutralReset = document.getElementById("neutral-reset");
+    fullWidthToggle = document.getElementById("toggle-full-width");
+    fullWidthState = document.getElementById("toggle-full-width-state");
+    textAreaAutoSizeToggle = document.getElementById("toggle-textarea-autosize");
+    textAreaAutoSizeState = document.getElementById("toggle-textarea-autosize-state");
     padRows = document.getElementById("pad-rows");
     padResetAll = document.getElementById("pad-reset-all");
+    padPresetMin = document.getElementById("pad-preset-min");
+    padPresetMax = document.getElementById("pad-preset-max");
     paddingStatusEl = document.getElementById("padding-status");
     customHostInput = document.getElementById("custom-host");
     customHostAdd = document.getElementById("custom-host-add");
@@ -1267,6 +1384,7 @@
       reflectScrollBuffer(values.gridScrollBufferEnabled === true);
       reflectAutofit(values.gridAutoSizeEnabled === true);
       reflectAutofitDensity(values.gridAutoFitDensity);
+      reflectHeaderWrap(values.gridHeaderWrapEnabled === true);
 
       reflectThemeDisable(values.themeDisableEnabled === true);
       reflectColorOverride(values.colorOverrideEnabled === true); // also sets lastNeutralTint in lockstep
@@ -1282,6 +1400,8 @@
       }
 
       componentDensity = cloneDensity(values.componentDensity);
+      reflectFullWidth(values.fullWidthEnabled === true);
+      reflectTextAreaAutoSize(values.textAreaAutoSizeEnabled === true);
       hydrateSliders();
       customHostPatterns = normalizedPatternList(values.customHostPatterns);
       renderCustomHosts();
@@ -1299,6 +1419,7 @@
       autofitDensitySlider.addEventListener("change", function () { onAutofitDensityInput(autofitDensitySlider.value); });
     }
     if (autofitDensityReset) { autofitDensityReset.addEventListener("click", onAutofitDensityReset); }
+    if (headerWrapToggle) { headerWrapToggle.addEventListener("click", onHeaderWrapToggle); }
     if (themeDisableToggle) { themeDisableToggle.addEventListener("click", onThemeDisableToggle); }
     if (colorOverrideToggle) { colorOverrideToggle.addEventListener("click", onColorOverrideToggle); }
     if (resetAllBtn) { resetAllBtn.addEventListener("click", onResetAll); }
@@ -1307,7 +1428,11 @@
       neutralSwatch.addEventListener("change", function () { onNeutralPicked(neutralSwatch.value, false); });
     }
     if (neutralReset) { neutralReset.addEventListener("click", onNeutralReset); }
+    if (fullWidthToggle) { fullWidthToggle.addEventListener("click", onFullWidthToggle); }
+    if (textAreaAutoSizeToggle) { textAreaAutoSizeToggle.addEventListener("click", onTextAreaAutoSizeToggle); }
     if (padResetAll) { padResetAll.addEventListener("click", onPadResetAll); }
+    if (padPresetMin) { padPresetMin.addEventListener("click", function () { onPadPreset("min"); }); }
+    if (padPresetMax) { padPresetMax.addEventListener("click", function () { onPadPreset("max"); }); }
     if (customHostAdd) { customHostAdd.addEventListener("click", onAddCustomHost); }
     if (customHostInput) {
       customHostInput.addEventListener("keydown", function (event) {
@@ -1341,6 +1466,7 @@
       if (changes.gridScrollBufferEnabled) { reflectScrollBuffer(changes.gridScrollBufferEnabled.newValue === true); }
       if (changes.gridAutoSizeEnabled) { reflectAutofit(changes.gridAutoSizeEnabled.newValue === true); }
       if (changes.gridAutoFitDensity) { reflectAutofitDensity(changes.gridAutoFitDensity.newValue); }
+      if (changes.gridHeaderWrapEnabled) { reflectHeaderWrap(changes.gridHeaderWrapEnabled.newValue === true); }
 
       if (changes.themeDisableEnabled) {
         reflectThemeDisable(changes.themeDisableEnabled.newValue === true);
@@ -1365,6 +1491,14 @@
       if (changes.componentDensity) {
         componentDensity = cloneDensity(changes.componentDensity.newValue);
         hydrateSliders();
+        refreshPaddingStatusSoon();
+      }
+      if (changes.fullWidthEnabled) {
+        reflectFullWidth(changes.fullWidthEnabled.newValue === true);
+        refreshPaddingStatusSoon();
+      }
+      if (changes.textAreaAutoSizeEnabled) {
+        reflectTextAreaAutoSize(changes.textAreaAutoSizeEnabled.newValue === true);
         refreshPaddingStatusSoon();
       }
       if (changes.customHostPatterns) {

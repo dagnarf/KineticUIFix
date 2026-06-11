@@ -30,7 +30,7 @@ review. Build the artifact with `npm run build` (or `npm run package` to gate on
 **Name** (≤45 recommended): `Kinetic Grid Grouping Fix`
 
 **Summary / short description** (≤132 chars, taken from `manifest.description`):
-> Fixes Kinetic grid bugs (leak, blank grid, checkboxes) plus theme controls and per-component density sliders. Default OFF.
+> Fixes Kinetic grid bugs plus auto-size, full-width mode, theme controls, and density sliders. Default OFF.
 
 **Category:** Developer Tools (or Productivity)
 
@@ -148,7 +148,7 @@ The dashboard requires a justification for **each** permission. Copy these into 
 |---|---|
 | **debugger** (optional) | The validated rewrite mode must rewrite Epicor's content-hashed `main.*.js` bundle as it loads to insert a one-line hook at the grid's `rebind()` method. The Chrome `debugger` API's Fetch domain is the reliable way to intercept and rewrite that already-built, minified (Angular Ivy) script at response time on the live SaaS app, where the page's CSP and class minification make a page-world class wrap unreliable. The debugger permission is requested only when the user selects Debugger mode. Runtime mode remains available without this permission. |
 | **scripting** | Register the page-world `document_start` runtime hook, register custom-host content scripts after a user grants a host, and read the in-page status markers (`window.__KINETIC_GRID_FIX__`, `dataset.kineticThemeControl`, `dataset.kineticPaddingControl`) from the active supported Kinetic tab so the popup can show whether fixes applied. |
-| **storage** | Persist the user's settings (grid fix on/off, delivery mechanism, scope; user-approved custom host patterns; the theming settings; and the density/padding slider factors) in `chrome.storage.local`. Nothing is synced or transmitted. |
+| **storage** | Persist the user's settings (grid fix on/off, delivery mechanism, scope; user-approved custom host patterns; the theming settings; full-width mode; and the density/padding slider factors) in `chrome.storage.local`. Nothing is synced or transmitted. |
 | **tabs** | Find open supported Kinetic tabs in order to reload them so runtime hooks / optional rewrite mode take effect on the next `main.js` load, react to navigation on those tabs, and read the active tab's URL in the popup to scope the status readout. Tab data is never transmitted. |
 | **Host permission `*://*.epicorsaas.com/*`** | The extension operates on Epicor Kinetic SaaS, served from `*.epicorsaas.com`, by default. This host scope is required to register scoped scripts, run the theming/density content scripts, and query/reload those tabs. |
 | **Optional host permissions** | Some customers serve Kinetic through a custom domain or subdomain. The popup lets the user enter an exact host (`tenant.example.com`) or wildcard (`*.example.com`); Chrome then prompts for that exact origin set. The extension stores only the approved match patterns in `chrome.storage.local` and registers the same scripts on those hosts. |

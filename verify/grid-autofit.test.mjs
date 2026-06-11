@@ -26,6 +26,8 @@ test("module exposes the pure engine and stays inert without document+chrome", (
   assert.equal(typeof M.fillToAvailable, "function");
   assert.equal(typeof M.fitKey, "function");
   assert.equal(typeof M.shouldRefit, "function");
+  assert.equal(typeof M.densityOptions, "function");
+  assert.equal(typeof M.wrappedHeaderOptions, "function");
   assert.equal(typeof M.install, "function");
   assert.equal(typeof M.version, "string");
 });
@@ -41,6 +43,14 @@ test("computeColumnWidth: body-driven width = max body text + cell padding", () 
   const w = M.computeColumnWidth({ headerWidth: 10, contentWidths: [40, 80, 60], hasText: true });
   // max body = 80; target = 80 + CELL_PADDING + SAFETY(2); header (10) target is smaller.
   assert.equal(w, Math.ceil(80 + M.CELL_PADDING + 2));
+});
+
+test("computeColumnWidth: date-like body cells can reserve a small clip guard", () => {
+  const compact = M.computeColumnWidth(
+    { headerWidth: 10, contentWidths: [50], hasText: true, bodyExtraPad: M.DATE_TEXT_PAD },
+    { cellPadding: 4.2, headerAffordance: 0 }
+  );
+  assert.equal(compact, Math.ceil(50 + 4.2 + M.DATE_TEXT_PAD + 2));
 });
 
 test("computeColumnWidth: header-driven width adds the header affordance", () => {
@@ -168,6 +178,21 @@ test("densityOptions: measured cell chrome overrides the constant (native parity
   const o = M.densityOptions(1, { cellPadding: 30, headerAffordance: 40 });
   assert.equal(o.cellPadding, 30, "measured padding flows through");
   assert.equal(o.headerAffordance, 40);
+});
+
+test("densityOptions: wrapped-header callers can suppress the header affordance", () => {
+  const o = M.densityOptions(0.5, { cellPadding: 8, headerAffordance: 0 });
+  assert.equal(o.headerAffordance, 0);
+  const noAffordance = M.computeColumnWidth({ headerWidth: 60, contentWidths: [1], hasText: true }, o);
+  assert.equal(noAffordance, Math.ceil(60 + 4 + 2), "widest wrapped word + scaled cell padding + safety only");
+});
+
+test("wrappedHeaderOptions: suppresses affordance but keeps a header chrome floor for whole-word fit", () => {
+  const o = M.wrappedHeaderOptions(0.5, { cellPadding: 4.2, headerAffordance: 22 });
+  assert.equal(o.headerAffordance, 0, "no sort/menu affordance in wrapped-header mode");
+  assert.equal(o.cellPadding, M.HEADER_WRAP_MIN_CHROME * 0.5, "floor is density-scaled after clamping");
+  const uom = M.computeColumnWidth({ headerWidth: 23.23, contentWidths: [12], hasText: true }, o);
+  assert.equal(uom, Math.ceil(23.23 + 5 + 2), "dense UOM gets enough rendered header text area");
 });
 
 test("densityOptions scales chrome + cap by the factor; denser packs tighter", () => {

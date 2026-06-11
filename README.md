@@ -190,6 +190,34 @@ tiles blue (`rgb(28,116,233)`); turning everything off reverts every token **exa
 the un-themed Third tenant already matches stock — proving "disable on Education ⇒ looks like Third".
 Evidence: [`.output/chrome-plugin-grid-fix/theme-verification.md`](.output/chrome-plugin-grid-fix/theme-verification.md).
 
+## Wrap column headers (v3.20, ISOLATED header-wrap + narrow injector)
+
+v3.20 adds a **"Wrap column headers"** toggle. By default a Kinetic grid header forces each title onto one
+line (`white-space:nowrap` + ellipsis) with `table-layout:fixed` columns, so a column whose **data is just a
+checkbox** is still pinned wide enough to fit its whole title on one line — e.g. on **ABC Code Maintenance**
+the *Exclude from Cycle Count* column is **229px** while its content needs ~20px. The toggle flips header
+titles to `white-space:normal` so multi-word titles **stack vertically at word boundaries**, centers the
+header label independently from the column's body-data alignment, and **narrows** each column whose width was
+dictated only by its header down to the width of its **widest word** plus the live Kendo header inset. That
+keeps dense labels such as *UOM* on one line and labels such as *Renewal Number* on two intact-word lines
+instead of cutting whole words apart.
+
+Same delivery class as auto-size/theming: a separate **ISOLATED-world** content script
+(`src/grid-header-wrap.js`, `run_at: document_start`), **no debugger, no `main.js` rewrite, no tab reload, no
+new permission**, applied **live**, default **OFF**. Turning it off removes the wrap CSS and restores the
+native widths.
+
+**Race-free coordination with Auto-size columns.** Both features write `<col>` widths, so exactly one owns
+them: when **Auto-size columns** is ON, header-wrap injects only the wrap CSS and **defers** sizing to
+`grid-autofit.js`, which (seeing the header-wrap flag) measures each header by its **widest word** and narrows
+it as part of its own fit while preserving enough header text area for that word. When auto-size is OFF,
+header-wrap owns the shrink-only narrowing itself.
+
+**Live-validated** (CDP 9100, Education SaaS950, Order Tracker Lines grid, 2026-06-10; harness
+`verify/header-wrap-live-harness.mjs`): headers center regardless of text/numeric/boolean body alignment;
+*UOM* remains a single intact word; *Renewal Number* wraps to intact words; and numeric/text body alignment is
+unchanged. Earlier ABC Code Maintenance validation remains the wide-header compaction proof case.
+
 ## UI density / padding sliders (v3.5, ISOLATED per-component-family override injector)
 
 v3.5 adds **per-component-family density sliders** — fine-tune the size of each Kinetic component type
@@ -197,6 +225,17 @@ independently: grids, buttons, text fields, dropdowns, tabs, and field labels. S
 theming: a separate **ISOLATED-world** content script (`src/padding-control.js`, `run_at:
 document_start`, already-granted or user-approved host), **no debugger, no `main.js` rewrite, no tab
 reload, no new required permission**, applied **live**, default **OFF**.
+
+v3.30 adds a default-off **"Text area auto-size"** switch in the same Padding & spacing panel. When enabled,
+Kinetic `ep-text-area` fields remove the native vertical resize handle and the runtime writes reversible
+inline heights from each textarea's measured `scrollHeight`; turning it off clears those inline heights and
+restores Kinetic's native `resize: vertical` behavior.
+
+v3.31 adds a default-off **"Full width mode"** switch in that same live injector. It removes the Kinetic
+`ep-view.page-content.header-width` cap and stretches the fixed page header, panel cards, panel-card grids,
+and their AppStudio container wrappers to the full available splitter-pane width. It is intended for
+ultrawide monitors and high-density layouts: the page can consume the unused right-side viewport without
+requiring a reload or changing any data.
 
 **Why per-family overrides, not token scaling** (captured live 2026-06-05; `.tmp/padding-iter/`). The
 earlier v3.4 approach scaled Kendo's `:root` design tokens (`--kendo-spacing-*`, `--kendo-font-size-*`).
@@ -238,11 +277,12 @@ is sufficient here: unlike the theme tokens there are no fractional custom-prop 
 `!important` + last-in-`<head>` source order and **reverts exactly** when the element is removed; it never
 touches the inline `<html style>` attribute (where tenant theme tokens live), so an Angular theme-rewrite
 can't wipe it and it can't disturb theme-control. The pure engine is `buildCss(state) → CSS text`; the
-6-family `FAMILIES` table (each dim → selectors + per-prop stock `base`) is the single source of truth
-(mirrored in `popup.js`, lockstep-asserted by the tests). Storage key: **`componentDensity`**
+component-family `FAMILIES` table (each dim → selectors + per-prop stock `base`) is the single source of truth
+(mirrored in `popup.js`, lockstep-asserted by the tests). Storage keys: **`componentDensity`**
 (`{family→{dim→factor}}`; only non-default entries stored, empty families pruned ⇒ empty map is fully
-inert). Marker: `document.documentElement.dataset.kineticPaddingControl` = `{version, active,
-adjustments:[{family,dim,factor}], ruleCount, reasserts}`.
+inert), **`textAreaAutoSizeEnabled`**, and **`fullWidthEnabled`**. Marker: `document.documentElement.dataset.kineticPaddingControl`
+= `{version, active, adjustments:[{family,dim,factor}], ruleCount, reasserts, textAreaAutoSize,
+textAreaAutoSizeCount, fullWidth}`.
 
 **Live-validated** (`verify/padding-live-harness.mjs`, CDP-9100): the mechanism proof injects the engine
 CSS under a distinct probe id and asserts each family's representative rendered element moves the right
@@ -261,9 +301,9 @@ scope). Below the grid fix are the two **theming switches** (Disable theming, Ov
 revealable **10-family color-picker panel** (per-row Reset + "Reset all to stock") and a live theming
 status line — these apply **immediately, with no reload hint**, because the content script reacts to
 storage changes live. Below them a **"Padding & spacing"** disclosure (like the Advanced link) reveals
-the **per-component-family density sliders**, grouped by family (Grids / Buttons / Text fields /
-Dropdowns / Tabs / Field labels) with live `%` readouts, per-row Reset, "Reset all to default", and a
-live spacing status line — also applied live with no reload. The toolbar **badge** reads `ON` (green)
+the **Full width mode** and **Text area auto-size** switches plus **per-component-family density sliders**,
+grouped by family (Grids / Buttons / Text fields / Dropdowns / Tabs / Field labels) with live `%` readouts,
+per-row Reset, "Reset all to default", and a live spacing status line — also applied live with no reload. The toolbar **badge** reads `ON` (green)
 when any feature is active and the title enumerates which (e.g. `grid fix on (reload Kinetic tab to
 apply) · theming off · custom colors · spacing adjusted`).
 Icons: `node icons/make-icons.mjs`.
@@ -373,7 +413,7 @@ integrity incl. each dim's selectors + per-prop `base`, the dropdown value-text 
 text-fields scoped away from dropdowns, `clampFactor`/`isDefaultFactor`/`round2`, `buildCss` scaling +
 FAMILIES ordering + inert/skip-at-default cases, `activeAdjustments`/`ruleCount`) and the fake-DOM runtime
 that models the `<style>.textContent` applier (scaled `!important` CSS, the marker shape, host gating,
-live `storage.onChanged` apply+revert, idempotent install/uninstall). `verify/popup-logic.test.mjs`
+live `storage.onChanged` apply+revert, full-width mode, idempotent install/uninstall). `verify/popup-logic.test.mjs`
 adds the popup's pure density helpers (nested `nextComponentDensity` RMW + empty-family pruning,
 `countComponentAdjustments`, status helpers) and a **popup↔engine `FAMILIES` lockstep** assertion;
 `verify/manifest-shape.test.mjs` asserts the second ISOLATED `content_scripts` entry; the

@@ -110,6 +110,12 @@ async function loadPopup() {
     "autofit-density",
     "autofit-density-pct",
     "autofit-density-reset",
+    "toggle-header-wrap",
+    "toggle-header-wrap-state",
+    "toggle-full-width",
+    "toggle-full-width-state",
+    "toggle-textarea-autosize",
+    "toggle-textarea-autosize-state",
   ];
   const els = {};
   for (const id of ids) {
@@ -157,6 +163,71 @@ test("flipping the switch persists gridFixEnabled=true and shows the apply hint"
     await new Promise((r) => setTimeout(r, 25));
   }
   assert.equal(shim.store.gridFixEnabled, true);
+});
+
+test("flipping the Wrap-column-headers switch persists gridHeaderWrapEnabled (live, no reload hint)", async () => {
+  const { els, shim } = await loadPopup();
+  // Default OFF on open.
+  assert.equal(els["toggle-header-wrap"].getAttribute("aria-checked"), "false");
+  assert.equal(els["toggle-header-wrap-state"].textContent, "Off");
+  // Flip on.
+  els["toggle-header-wrap"].dispatch("click");
+  assert.equal(els["toggle-header-wrap"].getAttribute("aria-checked"), "true");
+  assert.equal(els["toggle-header-wrap-state"].textContent, "On");
+  for (let i = 0; i < 40 && shim.store.gridHeaderWrapEnabled !== true; i += 1) {
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  assert.equal(shim.store.gridHeaderWrapEnabled, true, "persisted the new flag");
+  // It is a LIVE feature -> flipping it must NOT touch the main grid-fix flag (which carries the reload hint).
+  assert.notEqual(shim.store.gridFixEnabled, true, "header-wrap does not enable the debugger-delivered grid fix");
+  // Flip back off.
+  els["toggle-header-wrap"].dispatch("click");
+  for (let i = 0; i < 40 && shim.store.gridHeaderWrapEnabled !== false; i += 1) {
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  assert.equal(shim.store.gridHeaderWrapEnabled, false, "toggled back off");
+});
+
+test("flipping the Text-area auto-size switch persists textAreaAutoSizeEnabled (live, no reload hint)", async () => {
+  const { els, shim } = await loadPopup();
+  assert.equal(els["toggle-textarea-autosize"].getAttribute("aria-checked"), "false");
+  assert.equal(els["toggle-textarea-autosize-state"].textContent, "Off");
+
+  els["toggle-textarea-autosize"].dispatch("click");
+  assert.equal(els["toggle-textarea-autosize"].getAttribute("aria-checked"), "true");
+  assert.equal(els["toggle-textarea-autosize-state"].textContent, "On");
+  for (let i = 0; i < 40 && shim.store.textAreaAutoSizeEnabled !== true; i += 1) {
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  assert.equal(shim.store.textAreaAutoSizeEnabled, true, "persisted the new flag");
+  assert.notEqual(shim.store.gridFixEnabled, true, "text-area auto-size does not enable the reload-gated grid fix");
+
+  els["toggle-textarea-autosize"].dispatch("click");
+  for (let i = 0; i < 40 && shim.store.textAreaAutoSizeEnabled !== false; i += 1) {
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  assert.equal(shim.store.textAreaAutoSizeEnabled, false, "toggled back off");
+});
+
+test("flipping the Full-width switch persists fullWidthEnabled (live, no reload hint)", async () => {
+  const { els, shim } = await loadPopup();
+  assert.equal(els["toggle-full-width"].getAttribute("aria-checked"), "false");
+  assert.equal(els["toggle-full-width-state"].textContent, "Off");
+
+  els["toggle-full-width"].dispatch("click");
+  assert.equal(els["toggle-full-width"].getAttribute("aria-checked"), "true");
+  assert.equal(els["toggle-full-width-state"].textContent, "On");
+  for (let i = 0; i < 40 && shim.store.fullWidthEnabled !== true; i += 1) {
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  assert.equal(shim.store.fullWidthEnabled, true, "persisted the new flag");
+  assert.notEqual(shim.store.gridFixEnabled, true, "full-width mode does not enable the reload-gated grid fix");
+
+  els["toggle-full-width"].dispatch("click");
+  for (let i = 0; i < 40 && shim.store.fullWidthEnabled !== false; i += 1) {
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  assert.equal(shim.store.fullWidthEnabled, false, "toggled back off");
 });
 
 test("with no Kinetic tab the status shows a guiding note, not an error", async () => {
@@ -394,6 +465,34 @@ test("nextComponentDensity: immutable nested RMW; default/invalid/unknown delete
   assert.deepEqual(h, { grid: { rowHeight: 1.3, font: 1.2 } });
 });
 
+test("componentDensityPreset pins every family+dim to its floor / ceiling (min / max presets)", async () => {
+  const L = await getPopupLogic();
+
+  const min = L.componentDensityPreset("min");
+  const max = L.componentDensityPreset("max");
+
+  // Every known dimension whose extreme differs from its default must appear at exactly that extreme,
+  // and the result is a valid, fully-active density map.
+  for (const fam of L.FAMILIES_PAD) {
+    for (const dim of fam.dims) {
+      if (!L.isDefaultFactor(fam.key, dim.key, dim.min)) {
+        assert.equal(min[fam.key][dim.key], dim.min, `${fam.key}.${dim.key} min`);
+      }
+      if (!L.isDefaultFactor(fam.key, dim.key, dim.max)) {
+        assert.equal(max[fam.key][dim.key], dim.max, `${fam.key}.${dim.key} max`);
+      }
+    }
+  }
+
+  // No dim left at its default (it would have been pruned), and the maps round-trip through the counter.
+  const totalDims = L.FAMILIES_PAD.reduce((n, f) => n + f.dims.length, 0);
+  assert.equal(L.countComponentAdjustments(min), totalDims, "all dims adjusted at min");
+  assert.equal(L.countComponentAdjustments(max), totalDims, "all dims adjusted at max");
+
+  // Unknown extreme defaults to the min floor (wantMax is strictly === "max").
+  assert.deepEqual(L.componentDensityPreset("nonsense"), min, "non-'max' extreme behaves as min");
+});
+
 test("countComponentAdjustments counts only known family+dims with a non-default factor", async () => {
   const L = await getPopupLogic();
   assert.equal(L.countComponentAdjustments({}), 0);
@@ -410,6 +509,11 @@ test("densityStatusText: marker takes precedence, storage intent is the fallback
   assert.match(L.densityStatusText({ active: true, adjustments: [{ family: "grid", dim: "rowHeight" }, { family: "button", dim: "font" }] }), /Custom — 2 adjustments/);
   assert.match(L.densityStatusText({ active: false, adjustments: [] }), /Default spacing/);
   assert.match(L.densityStatusText(null, { componentDensity: { grid: { rowHeight: 1.3 } } }), /Custom \(1\).*Kinetic tab/);
+  assert.match(L.densityStatusText({ active: true, adjustments: [], textAreaAutoSize: true }), /Text areas auto-size/);
+  assert.match(L.densityStatusText(null, { textAreaAutoSizeEnabled: true }), /Text areas auto-size.*Kinetic tab/);
+  assert.match(L.densityStatusText({ active: true, adjustments: [], fullWidth: true }), /Full width/);
+  assert.match(L.densityStatusText(null, { fullWidthEnabled: true }), /Full width.*Kinetic tab/);
+  assert.match(L.densityStatusText({ active: true, adjustments: [{ family: "grid", dim: "rowHeight" }], fullWidth: true, textAreaAutoSize: true }), /Custom — 1 adjustment \+ full width \+ text areas/);
   assert.match(L.densityStatusText(null, {}), /Default spacing/);
 });
 
@@ -417,7 +521,11 @@ test("isDensityActive mirrors the marker active rule for marker and storage", as
   const L = await getPopupLogic();
   assert.equal(L.isDensityActive({ active: true, adjustments: [{ family: "grid", dim: "rowHeight", factor: 1.3 }] }), true);
   assert.equal(L.isDensityActive({ active: false, adjustments: [] }), false);
+  assert.equal(L.isDensityActive({ active: true, adjustments: [], textAreaAutoSize: true }), true);
+  assert.equal(L.isDensityActive({ active: true, adjustments: [], fullWidth: true }), true);
   assert.equal(L.isDensityActive(null, { componentDensity: { grid: { rowHeight: 1.3 } } }), true);
+  assert.equal(L.isDensityActive(null, { textAreaAutoSizeEnabled: true }), true);
+  assert.equal(L.isDensityActive(null, { fullWidthEnabled: true }), true);
   assert.equal(L.isDensityActive(null, { componentDensity: {} }), false);
   assert.equal(L.isDensityActive(null, {}), false);
 });

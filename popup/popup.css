@@ -422,6 +422,11 @@ body {
 /* The Column-spacing density slider sits inline under the Auto-size toggle (re-uses .pad-row layout). */
 .autofit-density { margin-top: 2px; }
 
+.full-width-mode,
+.textarea-autosize { margin: 8px 0 0; }
+.full-width-hint,
+.textarea-autosize-hint { margin: 4px 2px 10px; }
+
 .pad-row label {
   flex: 0 0 92px;
   min-width: 0;
@@ -457,5 +462,7 @@ body {
   padding-top: 8px;
   border-top: 1px solid var(--line);
   display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   justify-content: flex-end;
 }

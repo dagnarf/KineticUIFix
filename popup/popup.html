@@ -93,6 +93,27 @@
   </div>
   <p class="hint hint-static">Lower = tighter columns (more fit on screen); higher = roomier. Needs <b>Auto-size columns</b> on.</p>
 
+  <!-- Wrap column headers (separate ISOLATED-world injector) — line-wraps multi-word header titles so they
+       stack vertically and narrows the columns whose width was dictated only by a long one-line header.
+       Applies LIVE, no reload. Pairs with Auto-size columns (which owns the widths when both are on). -->
+  <section class="toggle-row">
+    <div class="toggle-label">
+      <span class="toggle-title">Wrap column headers</span>
+      <span id="toggle-header-wrap-state" class="toggle-state state-off">Off</span>
+    </div>
+    <button
+      id="toggle-header-wrap"
+      type="button"
+      role="switch"
+      aria-checked="false"
+      aria-label="Line-wrap multi-word grid column headers so they stack vertically and free horizontal space"
+      class="switch">
+      <span class="switch-track"><span class="switch-thumb"></span></span>
+    </button>
+  </section>
+
+  <p class="hint hint-static">Stacks multi-word headers (e.g. “Exclude from Cycle Count”) onto several lines and shrinks those columns to free horizontal space. Best paired with <b>Auto-size columns</b>.</p>
+
   <!-- Theming controls (separate ISOLATED-world CSS injector) — apply LIVE, no reload. -->
   <section class="toggle-row">
     <div class="toggle-label">
@@ -149,8 +170,42 @@
   <details id="padding" class="padding">
     <summary>Padding &amp; spacing</summary>
     <p class="pad-intro">Fine-tune the size of each Kinetic component type. Applies live on a Kinetic tab; drag a slider back to 100% (or Reset) to restore the stock spacing.</p>
+    <section class="toggle-row full-width-mode">
+      <div class="toggle-label">
+        <span class="toggle-title">Full width mode</span>
+        <span id="toggle-full-width-state" class="toggle-state state-off">Off</span>
+      </div>
+      <button
+        id="toggle-full-width"
+        type="button"
+        role="switch"
+        aria-checked="false"
+        aria-label="Let Kinetic AppStudio pages and panel cards use the full available browser width"
+        class="switch">
+        <span class="switch-track"><span class="switch-thumb"></span></span>
+      </button>
+    </section>
+    <p class="hint-static full-width-hint">Expands AppStudio pages, fixed headers, panel cards, and panel-card grids to the full available pane width.</p>
+    <section class="toggle-row textarea-autosize">
+      <div class="toggle-label">
+        <span class="toggle-title">Text area auto-size</span>
+        <span id="toggle-textarea-autosize-state" class="toggle-state state-off">Off</span>
+      </div>
+      <button
+        id="toggle-textarea-autosize"
+        type="button"
+        role="switch"
+        aria-checked="false"
+        aria-label="Auto-size Kinetic text areas to fit their content"
+        class="switch">
+        <span class="switch-track"><span class="switch-thumb"></span></span>
+      </button>
+    </section>
+    <p class="hint-static textarea-autosize-hint">Fits multi-line fields to their content and removes the resize handle while on.</p>
     <div id="pad-rows" class="pad-rows"></div>
     <div class="pad-footer">
+      <button id="pad-preset-min" type="button" class="clr-reset-all" aria-label="Set all spacing sliders to minimum">Minimum</button>
+      <button id="pad-preset-max" type="button" class="clr-reset-all" aria-label="Set all spacing sliders to maximum">Maximum</button>
       <button id="pad-reset-all" type="button" class="clr-reset-all">Reset all to default</button>
     </div>
   </details>

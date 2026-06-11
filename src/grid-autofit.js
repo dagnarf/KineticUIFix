@@ -56,11 +56,15 @@
 (function (root) {
   "use strict";
 
-  var VERSION = "1.3.0";
+  var VERSION = "1.5.0";
   var MARKER_KEY = "__KINETIC_GRID_AUTOFIT__";
   var DATASET_KEY = "kineticGridAutofit";              // -> attribute data-kinetic-grid-autofit
   var HOST_SUFFIX = ".epicorsaas.com";
-  var STORAGE_KEYS = ["gridAutoSizeEnabled", "gridAutoFitDensity", "customHostPatterns"];
+  // gridHeaderWrapEnabled is read (not owned) here: when the "Wrap column headers" feature is on, the
+  // sibling src/grid-header-wrap.js injects the wrap CSS and DEFERS column sizing to us, and we measure each
+  // header by its WIDEST WORD (not the full one-line title) so a wrapped multi-word header narrows its
+  // column to its widest word instead of forcing a wide one-line column. See measureColumns().
+  var STORAGE_KEYS = ["gridAutoSizeEnabled", "gridAutoFitDensity", "gridHeaderWrapEnabled", "customHostPatterns"];
 
   // Width math constants. Bases are live-measured stock px on the Order-Entry/Order-Tracker size variant.
   var MIN_WIDTH = 24;                                   // never collapse a column below this
@@ -69,7 +73,9 @@
                                                         // slack; the runtime MEASURES the real cell chrome and
                                                         // overrides this per grid (native parity — see below).
   var HEADER_AFFORDANCE = 22;                           // reserve for the sort arrow + column-menu glyph
+  var HEADER_WRAP_MIN_CHROME = 10;                       // Kendo header inset floor so words do not clip at dense settings
   var SAFETY_PAD = 2;                                   // sub-pixel rounding guard against re-truncation
+  var DATE_TEXT_PAD = 4;                                // body-text guard for dense mm/dd/yyyy cells at clip edge
   var MAX_SAMPLE_ROWS = 120;                            // bound the per-grid measurement loop
   var SETTLE_MS = 350;                                  // dataset signature must hold this long before a fit
   var FILL_MIN_GAP = 4;                                 // only distribute surplus when the viewport gap exceeds this
@@ -129,6 +135,18 @@
     };
   }
 
+  // wrappedHeaderOptions(density, base) -> opts for the auto-fit path when the sibling header-wrap feature
+  // owns label wrapping but auto-fit owns widths. We still suppress the sort/menu affordance for compaction,
+  // but keep a small header-inset floor before density scaling; at density 0.5 the live Kendo header leaves
+  // roughly 5px less text area than the <col> width, so the floor prevents barely-fitted words like "UOM" or
+  // "Renewal" from breaking or clipping by sub-pixel rounding.
+  function wrappedHeaderOptions(density, base) {
+    var b = (base && typeof base === "object") ? base : {};
+    var chrome = numOr(b.cellPadding, CELL_PADDING);
+    if (chrome < HEADER_WRAP_MIN_CHROME) { chrome = HEADER_WRAP_MIN_CHROME; }
+    return densityOptions(density, { cellPadding: chrome, headerAffordance: 0 });
+  }
+
   // computeColumnWidth(col, opts) -> integer px, or null to SKIP the column (leave its width untouched).
   //   col  = { headerWidth:number, contentWidths:number[], hasText:boolean }
   //   opts = { cellPadding, headerAffordance, minWidth, maxWidth, safetyPad } — any field falls back to the
@@ -142,6 +160,7 @@
     var o = opts || {};
     var cellPad = numOr(o.cellPadding, CELL_PADDING);
     var headerAff = numOr(o.headerAffordance, HEADER_AFFORDANCE);
+    var bodyExtra = numOr(col.bodyExtraPad, 0);
     var safety = numOr(o.safetyPad, SAFETY_PAD);
     var minW = numOr(o.minWidth, MIN_WIDTH);
     var maxW = numOr(o.maxWidth, MAX_WIDTH);
@@ -156,7 +175,7 @@
     var hasText = col.hasText === true || header > 0 || bodyMax > 0;
     if (!hasText) { return null; }                     // pure control column -> leave alone
     var headerTarget = header > 0 ? header + cellPad + headerAff : 0;
-    var bodyTarget = bodyMax > 0 ? bodyMax + cellPad : 0;
+    var bodyTarget = bodyMax > 0 ? bodyMax + cellPad + bodyExtra : 0;
     var target = Math.max(headerTarget, bodyTarget) + safety;
     return clampWidth(Math.ceil(target), minW, maxW);
   }
@@ -317,6 +336,7 @@
       var D = W.document;
       var enabled = false;
       var density = DENSITY_DEF;                        // gridAutoFitDensity (the popup slider)
+      var headerWrap = false;                           // gridHeaderWrapEnabled — measure headers by widest word
       var customHostPatterns = [];
       var observers = [];
       var timers = [];
@@ -356,6 +376,13 @@
         var c = ctx();
         if (!c || !text) { return 0; }
         try { c.font = fontOf(el); return c.measureText(text).width; } catch (e) { return 0; }
+      }
+
+      function isDateLikeText(text) {
+        try {
+          var s = String(text || "").trim();
+          return /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(s) || /^\d{4}-\d{2}-\d{2}(?:T|$)/.test(s);
+        } catch (e) { return false; }
       }
 
       // The header + body tables of one logical pane share a colgroup; a grid may have a locked pane
@@ -479,7 +506,23 @@
             var th = ths[h];
             var titleEl = th.querySelector(".k-column-title") || th.querySelector(".k-link") || th;
             var headerText = (titleEl.textContent || "").trim();
-            cols.push({ headerWidth: measureText(headerText, titleEl), contentWidths: [], hasText: headerText.length > 0 });
+            // When header wrapping is on, the title is allowed to stack across lines, so the column only
+            // needs to be as wide as the WIDEST WORD — not the full one-line string. Measuring the widest
+            // word lets a multi-word title (e.g. "Exclude from Cycle Count" on a checkbox column) narrow to
+            // its widest word and stack vertically instead of pinning a wide one-line column.
+            var headerWidth;
+            if (headerWrap && headerText.indexOf(" ") >= 0) {
+              var words = headerText.split(/\s+/);
+              headerWidth = 0;
+              for (var wi = 0; wi < words.length; wi += 1) {
+                if (!words[wi]) { continue; }
+                var ww = measureText(words[wi], titleEl);
+                if (ww > headerWidth) { headerWidth = ww; }
+              }
+            } else {
+              headerWidth = measureText(headerText, titleEl);
+            }
+            cols.push({ headerWidth: headerWidth, contentWidths: [], hasText: headerText.length > 0, bodyExtraPad: 0 });
           }
           var content = contentOf(grid);
           var rows = dataRowsOf(content);
@@ -492,6 +535,7 @@
                 var text = (td.textContent || "").trim();
                 if (!text) { continue; }
                 cols[ci].hasText = true;
+                if (isDateLikeText(text)) { cols[ci].bodyExtraPad = DATE_TEXT_PAD; }
                 cols[ci].contentWidths.push(measureText(text, inner));
               }
             }
@@ -610,7 +654,11 @@
 
           var cols = measureColumns(grid);
           // Density slider + per-grid measured cell chrome flow into the width math through opts.
-          var opts = densityOptions(density, measureCellChrome(grid));
+          var chrome = measureCellChrome(grid);
+          // In wrapped-header mode we size header-driven columns to the widest word and let the title stack.
+          // Suppress the sort/menu affordance, but preserve a small header-inset floor so whole words remain
+          // intact even at the densest setting.
+          var opts = headerWrap ? wrappedHeaderOptions(density, chrome) : densityOptions(density, chrome);
           var natural = computeColumnWidths(cols, opts);
           // Consume the maximum width: size each column to its widest INITIALLY-VIEWABLE content, then grow
           // the flexible columns to fill the viewport (no dead space). Control columns keep their live width
@@ -741,6 +789,7 @@
             try {
               customHostPatterns = normalizeHostPatterns(v && v.customHostPatterns);
               density = clampDensity(v && v.gridAutoFitDensity);
+              headerWrap = !!(v && v.gridHeaderWrapEnabled === true);
               var on = !!(v && v.gridAutoSizeEnabled === true);
               setEnabled(on);
               // Force a re-fit on every (re)read while enabled so a density-slider change (which leaves the
@@ -761,7 +810,7 @@
           var onChanged = function (changes, area) {
             try {
               if (area !== "local" || !changes) { return; }
-              if (changes.gridAutoSizeEnabled || changes.gridAutoFitDensity || changes.customHostPatterns) { readAndApply(); }
+              if (changes.gridAutoSizeEnabled || changes.gridAutoFitDensity || changes.gridHeaderWrapEnabled || changes.customHostPatterns) { readAndApply(); }
             } catch (e) { /* ignore */ }
           };
           cc.storage.onChanged.addListener(onChanged);
@@ -810,6 +859,8 @@
     MAX_WIDTH: MAX_WIDTH,
     CELL_PADDING: CELL_PADDING,
     HEADER_AFFORDANCE: HEADER_AFFORDANCE,
+    HEADER_WRAP_MIN_CHROME: HEADER_WRAP_MIN_CHROME,
+    DATE_TEXT_PAD: DATE_TEXT_PAD,
     FILL_MIN_GAP: FILL_MIN_GAP,
     WIDTH_BUCKET: WIDTH_BUCKET,
     TOP_EPS: TOP_EPS,
@@ -823,6 +874,7 @@
     clampDensity: clampDensity,
     maxScale: maxScale,
     densityOptions: densityOptions,
+    wrappedHeaderOptions: wrappedHeaderOptions,
     fitKey: fitKey,
     shouldRefit: shouldRefit,
     install: installRuntime

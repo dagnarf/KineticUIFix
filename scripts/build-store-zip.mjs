@@ -55,6 +55,7 @@ const RUNTIME_FILES = [
   "src/theme-control.js",
   "src/padding-control.js",
   "src/grid-autofit.js",
+  "src/grid-header-wrap.js",
   "src/grid-focus-scroll-fix.js",
   "popup/popup.html",
   "popup/popup.css",

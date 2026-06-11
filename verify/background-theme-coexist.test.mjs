@@ -22,7 +22,8 @@ const FULL_DEFAULTS = {
   colorOverrideValues: {},
   neutralTintEnabled: false,
   neutralTintHex: "",
-  componentDensity: {}
+  componentDensity: {},
+  fullWidthEnabled: false
 };
 
 function settle(ms = 0) {
@@ -183,6 +184,7 @@ test("first-run seeds the theme keys default-OFF / {} (T_C_02)", async () => {
 
   // The density map is also seeded default-OFF (empty => the padding injector is fully inert).
   assert.deepEqual(plain(harness.storage.componentDensity), {}, "componentDensity defaults to empty map");
+  assert.equal(harness.storage.fullWidthEnabled, false, "fullWidthEnabled defaults false");
 
   // The grid defaults must still be seeded too (no regression to the existing initializer).
   assert.equal(harness.storage.gridFixEnabled, false);
@@ -263,6 +265,26 @@ test("density-key change refreshes the badge ('spacing adjusted') but never atta
   assert.equal(harness.calls.attach, 0, "density changes never attach the debugger");
   assert.equal(harness.calls.reload, 0, "density changes never reload a tab");
   assert.equal(harness.calls.registerContentScripts, registerBaseline, "density changes never (un)register the grid probe");
+});
+
+test("full-width key refreshes the badge but never attaches/reloads", async () => {
+  const harness = createHarness({ ...FULL_DEFAULTS });
+  await settle();
+  const registerBaseline = harness.calls.registerContentScripts;
+
+  harness.changeConfig({ fullWidthEnabled: true });
+  await settle(300);
+  assert.equal(harness.badge.text, "ON", "badge reflects an active live layout feature");
+  assert.match(harness.badge.title, /full width/, "title mentions full-width mode");
+  assert.doesNotMatch(harness.badge.title, /reload/, "full-width label carries no reload hint (applies live)");
+
+  harness.changeConfig({ fullWidthEnabled: false });
+  await settle();
+  assert.doesNotMatch(harness.badge.title || "", /full width/, "full-width off is inert");
+
+  assert.equal(harness.calls.attach, 0, "full-width changes never attach the debugger");
+  assert.equal(harness.calls.reload, 0, "full-width changes never reload a tab");
+  assert.equal(harness.calls.registerContentScripts, registerBaseline, "full-width changes never (un)register the grid probe");
 });
 
 test("grid-key change STILL drives the debugger attach + reload path (positive control, T_C_04)", async () => {

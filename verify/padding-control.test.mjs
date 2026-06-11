@@ -29,9 +29,9 @@ const cd = (componentDensity) => ({ componentDensity });
 // FAMILIES integrity (the single source of truth, mirrored verbatim in popup.js)
 // =====================================================================================================
 
-test("FAMILIES: 9 families with the expected keys", () => {
-  assert.equal(M.FAMILIES.length, 9);
-  assert.equal(M.FAMILIES.map((f) => f.key).join(","), "grid,button,textbox,dropdown,page,tabs,label,card,tree");
+test("FAMILIES: 10 families with the expected keys", () => {
+  assert.equal(M.FAMILIES.length, 10);
+  assert.equal(M.FAMILIES.map((f) => f.key).join(","), "grid,button,textbox,dropdown,page,tabs,label,tag,card,tree");
   for (const f of M.FAMILIES) {
     assert.equal(typeof f.label, "string");
     assert.ok(Array.isArray(f.dims) && f.dims.length > 0, f.key + " has dims");
@@ -90,6 +90,7 @@ test("clampFactor: clamps into [min,max] per family+dim; null for unknown/NaN", 
   assert.equal(M.clampFactor("grid", "rowHeight", 1.3), 1.3, "in range unchanged");
   assert.equal(M.clampFactor("button", "font", 9), 1.6, "button font max 1.6");
   assert.equal(M.clampFactor("dropdown", "height", 0.1), 0.7, "dropdown height min 0.7");
+  assert.equal(M.clampFactor("tag", "height", 0.1), 0.65, "tag height min 0.65");
   assert.equal(M.clampFactor("nope", "x", 1), null, "unknown family -> null");
   assert.equal(M.clampFactor("grid", "nope", 1), null, "unknown dim -> null");
   assert.equal(M.clampFactor("grid", "rowHeight", "x"), null, "NaN -> null");
@@ -129,6 +130,25 @@ test("buildCss: inert cases all return ''", () => {
   assert.equal(M.buildCss(cd({ grid: { rowHeight: 1 } })), "", "factor at default emits nothing");
   assert.equal(M.buildCss(cd({ nope: { x: 1.5 } })), "", "unknown family ignored");
   assert.equal(M.buildCss(cd({ grid: { nope: 1.5 } })), "", "unknown dim ignored");
+});
+
+test("buildCss: textAreaAutoSizeEnabled removes the native resize handle without density sliders", () => {
+  const css = M.buildCss({ textAreaAutoSizeEnabled: true });
+  assert.equal(M.ruleCount({ textAreaAutoSizeEnabled: true }), 1, "single text-area rule");
+  assert.ok(css.indexOf("ep-text-area textarea.k-textarea, .ep-text-area textarea.k-textarea") >= 0,
+    "selector is scoped to Kinetic ep-text-area wrappers");
+  assert.ok(css.indexOf("resize: none !important;") >= 0, "native resize handle suppressed while enabled");
+  assert.ok(css.indexOf("overflow-y: hidden !important;") >= 0, "internal scrollbar hidden after autosize");
+});
+
+test("buildCss: fullWidthEnabled expands AppStudio view shell, fixed header, panel cards, and panel-card grids", () => {
+  const css = M.buildCss({ fullWidthEnabled: true });
+  assert.equal(M.ruleCount({ fullWidthEnabled: true }), 4, "four full-width layout rules");
+  assert.ok(css.indexOf("ep-view.page-content.header-width") >= 0, "view-shell cap removed");
+  assert.ok(css.indexOf("#ep-view-header") >= 0, "fixed page header width cap removed");
+  assert.ok(css.indexOf("ep-panel-card-grid") >= 0, "panel-card grids stretch");
+  assert.ok(css.indexOf("ep-panel-card") >= 0, "panel cards stretch");
+  assert.ok(css.indexOf("max-width: none !important;") >= 0, "width cap is removed with priority");
 });
 
 test("buildCss: grid rowHeight scales td/th + cell + in-cell input (row floor) + the MDI checkbox glyph, !important", () => {
@@ -200,9 +220,13 @@ test("buildCss: grid cellPad selectors are scoped to .ep-grid + match stock spec
 
 test("buildCss: dropdown height emits the coordinated value-text fix", () => {
   const css = M.buildCss(cd({ dropdown: { height: 1.4 } }));
+  assert.ok(css.indexOf(".k-combobox.k-picker .k-input-inner, .k-dropdownlist.k-picker .k-input-inner, .k-picker-md.k-picker .k-input-inner, .k-datepicker.k-picker .k-input-inner, .k-timepicker.k-picker .k-input-inner, .k-datepicker.k-input .k-input-inner, .k-timepicker.k-input .k-input-inner { height: 56px !important; min-height: 56px !important; }") >= 0,
+    "date/time inputs include the live k-datepicker.k-input / k-timepicker.k-input shape");
+  assert.ok(css.indexOf(".k-combobox.k-picker, .k-dropdownlist.k-picker, .k-picker-md.k-picker, .k-datepicker.k-picker, .k-timepicker.k-picker, .k-datepicker.k-input, .k-timepicker.k-input { height: 56px !important; min-height: 56px !important; }") >= 0,
+    "date/time hosts include the live k-datepicker.k-input / k-timepicker.k-input shape");
   assert.ok(css.indexOf(".k-combobox.k-picker .k-input-value-text, .k-dropdownlist.k-picker .k-input-value-text, .k-picker-md.k-picker .k-input-value-text { height: 56px !important; padding-top: 16.8px !important; line-height: 28px !important; }") >= 0,
     "value-text scaled: 40*1.4=56, 12*1.4=16.8, 20*1.4=28");
-  assert.ok(css.indexOf(".k-datepicker.k-picker .k-input-inner, .k-timepicker.k-picker .k-input-inner { padding-top: 21px !important; line-height: 28px !important; }") >= 0,
+  assert.ok(css.indexOf(".k-datepicker.k-picker .k-input-inner, .k-timepicker.k-picker .k-input-inner, .k-datepicker.k-input .k-input-inner, .k-timepicker.k-input .k-input-inner { padding-top: 21px !important; line-height: 28px !important; }") >= 0,
     "date/time value padding and line-height scale with compact height");
 });
 
@@ -240,7 +264,12 @@ test("buildCss: card fieldGap scales control margin-bottom (base 10) + checkbox 
   const css = M.buildCss(cd({ card: { fieldGap: 0.3 } }));
   assert.ok(css.indexOf("margin-bottom: 3px !important;") >= 0, "10 * 0.3 = 3 on field controls");
   assert.ok(css.indexOf(".ep-panel-card .ep-component-top-element.ep-check-box { margin-bottom: 1.5px !important; }") >= 0, "5 * 0.3 = 1.5 on checkboxes");
-  assert.equal(M.ruleCount(cd({ card: { fieldGap: 0.3 } })), 2, "fieldGap = 2 rules (controls + checkbox)");
+  assert.equal(M.ruleCount(cd({ card: { fieldGap: 0.3 } })), 3, "fieldGap = 3 rules (controls + checkbox + panel-bar-header centring pin)");
+  // PANEL-BAR HEADER exception: in the expanded-header band the top-element margins are symmetric 5/5
+  // CENTRING geometry, not a stacked-field gap — zeroing margin-bottom seated the search box 2.5px below
+  // the sibling dropdown in the band's flex-centre (live-repro QAGO1090 2026-06-10). Pinned to constant 5.
+  assert.ok(css.indexOf(".ep-panel-card .ep-panel-bar-title .ep-component-top-element.ep-text-box, .ep-panel-card .ep-panel-bar-title .ep-component-top-element.ep-numeric-box, .ep-panel-card .ep-panel-bar-title .ep-component-top-element.ep-date-picker, .ep-panel-card .ep-panel-bar-title .ep-component-top-element.ep-time-picker, .ep-panel-card .ep-panel-bar-title .ep-component-top-element.ep-combo-box, .ep-panel-card .ep-panel-bar-title .ep-component-top-element.ep-text-area, .ep-panel-card .ep-panel-bar-title .ep-component-top-element.ep-check-box { margin-bottom: 5px !important; }") >= 0,
+    "header-band top-element margin-bottom pinned to stock 5 (constant at any factor)");
 });
 
 test("card family is the WHITE-SPACE lever: layout spacing only, never CONTROL height/width", () => {
@@ -292,7 +321,7 @@ test("buildCss: field height compacts the floating-label WRAP via :has (eliminat
   assert.ok(dd.indexOf(".ep-panel-card .k-floating-label-container:has(.k-combobox, .k-dropdownlist, .k-datepicker, .k-timepicker) { height: 28px !important; min-height: 28px !important; }") >= 0, "dropdown wrap 40*0.7=28");
   // value-pull lifts the combobox/dropdownlist value as the wrap shrinks (base 12 -> 8.4 at min, clears clip)
   assert.ok(dd.indexOf(".k-combobox.k-input, .k-dropdownlist.k-picker { padding-top: 8.4px !important; }") >= 0, "value-pull 12*0.7=8.4");
-  assert.ok(dd.indexOf(".k-datepicker.k-picker .k-input-inner, .k-timepicker.k-picker .k-input-inner { padding-top: 10.5px !important; line-height: 14px !important; }") >= 0,
+  assert.ok(dd.indexOf(".k-datepicker.k-picker .k-input-inner, .k-timepicker.k-picker .k-input-inner, .k-datepicker.k-input .k-input-inner, .k-timepicker.k-input .k-input-inner { padding-top: 10.5px !important; line-height: 14px !important; }") >= 0,
     "date/time compact value fit: 15*0.7=10.5 and 20*0.7=14");
 });
 
@@ -336,6 +365,43 @@ test("buildCss: dropdown height recentres the combobox/dropdownlist toggle-arrow
     "combobox/dropdownlist toggle-arrow recentres (top:-4.4 -> dead-centre in the 28px field) at f=0.7");
   assert.equal(M.buildCss(cd({ dropdown: { height: 1 } })).indexOf(".k-dropdownlist.k-picker .k-input-button { top:"), -1,
     "toggle-arrow recentre is inert at f=1 (stock top:12 preserved, exact revert)");
+});
+
+test("buildCss: textbox height RE-SEATS the panel-bar-header search-box (direct-input variant)", () => {
+  // The expanded-header key-field search box (.ep-panel-bar-title .erp-search-box) is the DIRECT-input
+  // markup variant (the <input> itself is .k-textbox.k-input, no .k-input-inner child), so the form-field
+  // "keep padding-top 17" clip-edge rationale does not hold — stock 17 seated the typed value ON the
+  // underline of the 28px compacted box (live-repro QAGO1090 2026-06-10). Stock-proportional vertical
+  // scaling + affine separation that vanishes at f=1: value padding-top 12f+5 (17 stock / 13.4 min),
+  // floated label translateY(9f-5) (4 stock / 1.3 min), empty-resting placeholder top 7f+12 (ink-centred).
+  const css = M.buildCss(cd({ textbox: { height: 0.7 } }));
+  assert.ok(css.indexOf(".ep-panel-bar-title .erp-search-box input.k-textbox.k-input { padding-top: 13.4px !important; line-height: 12.6px !important; font-size: 9.8px !important; }") >= 0,
+    "header search-box value re-seats (padding-top 13.4, line/font scaled) at f=0.7");
+  assert.ok(css.indexOf(".ep-panel-bar-title .erp-search-box .k-floating-label-container.k-empty:not(.k-focus) .k-floating-label { top: 16.9px !important; }") >= 0,
+    "empty-resting placeholder re-seats to top 16.9 (net 7f against translateY(-12)) — ink-centred");
+  assert.ok(css.indexOf(".ep-panel-bar-title .erp-search-box .k-floating-label-container.k-focus .k-floating-label, .ep-panel-bar-title .erp-search-box .k-floating-label-container:not(.k-empty) .k-floating-label { font-size: 7.84px !important; line-height: 12.6px !important; transform: translateY(1.3px) !important; }") >= 0,
+    "floated label scales + lifts (translateY 1.3) — NEVER pins top (Epicor's k-focus top:0 must win)");
+  // Continuity: at f=1 the dim is inert (stock untouched, exact revert).
+  assert.equal(M.buildCss(cd({ textbox: { height: 1 } })).indexOf(".ep-panel-bar-title"), -1,
+    "header search-box exception is inert at f=1");
+});
+
+test("buildCss: dropdown height RE-CENTRES panel-bar-header (label-less) dropdown text", () => {
+  // Header-band pickers (.ep-panel-header-elements, e.g. the Supplier Tracker "All" view picker) have NO
+  // floating label: stock host padding-top is 0 and the auto-height value text is flex-centred. The global
+  // value-pull (host padding-top 12f) + value-text box rules (height 40f / padding-top 12f) pushed the text
+  // 2×8.4px below centre at f=0.7, overflowing the 28px host (live-repro QAGO1090, 2026-06-10). The
+  // exception restores the stock centring model: host pad 0, auto/normal value box, chevron top 20f-10
+  // (pad-0 host, vs the global 8f-10 which assumes a 12f pad).
+  const css = M.buildCss(cd({ dropdown: { height: 0.7 } }));
+  assert.ok(css.indexOf(".ep-panel-header-elements .k-combobox.k-input, .ep-panel-header-elements .k-dropdownlist.k-picker, .ep-panel-header-elements .k-picker-md.k-picker { padding-top: 0px !important; }") >= 0,
+    "header-band picker host pad pinned to 0 (no floating label to make room for)");
+  assert.ok(css.indexOf(".ep-panel-header-elements .k-combobox.k-picker .k-input-value-text, .ep-panel-header-elements .k-dropdownlist.k-picker .k-input-value-text, .ep-panel-header-elements .k-picker-md.k-picker .k-input-value-text { height: auto !important; padding-top: 0px !important; line-height: normal !important; }") >= 0,
+    "header-band value text gets its stock auto-height flex-centred box back");
+  assert.ok(css.indexOf(".ep-panel-card .ep-panel-header-elements .k-combobox.k-picker .k-input-button, .ep-panel-card .ep-panel-header-elements .k-dropdownlist.k-picker .k-input-button { top: 4px !important; }") >= 0,
+    "header-band chevron recentres for a pad-0 host (top = (40f-20)/2 = 4 at f=0.7)");
+  assert.equal(M.buildCss(cd({ dropdown: { height: 1 } })).indexOf(".ep-panel-header-elements"), -1,
+    "header-band exception is inert at f=1 (stock untouched, exact revert)");
 });
 
 test("buildCss: dropdown height recentres + scales the date-calendar / time-clock picker glyph", () => {
@@ -413,7 +479,14 @@ test("buildCss: textbox value inner is NOT given a padding-top override (native 
   const compact = M.buildCss(cd({ textbox: { height: 0.7 } }));
   assert.ok(compact.indexOf(".k-textbox .k-input-inner, .k-numerictextbox .k-input-inner, .k-maskedtextbox .k-input-inner { height: 28px !important; min-height: 28px !important; }") >= 0,
     "value inner scales height/min-height only");
-  assert.equal(compact.indexOf("padding-top"), -1, "textbox height emits NO padding-top (native 17 keeps the digit below the wrapper's overflow:hidden clip edge)");
+  // No padding-top on the .k-input-inner / .k-input GLOBAL rules — the clip-edge rationale protects the
+  // wrapped variants. The panel-bar-header search-box exception (direct-input variant, no clip edge) is
+  // the ONLY padding-top emitter, and it must stay scoped to .ep-panel-bar-title .erp-search-box.
+  for (const line of compact.split("\n")) {
+    if (line.indexOf("padding-top") === -1) { continue; }
+    assert.ok(line.startsWith(".ep-panel-bar-title .erp-search-box"),
+      "padding-top only on the header search-box exception, never the global inner/input rules: " + line);
+  }
 });
 
 test("buildCss: emitProp extension (offset/wrap/clamp) is inert by default — non-extended rules unchanged", () => {
@@ -448,8 +521,31 @@ test("buildCss: textbox + dropdown 'padding' scale the internal horizontal inset
   assert.ok(tb.indexOf("padding-left: 4px !important;") >= 0, "textbox inset 10 * 0.4 = 4");
   assert.ok(tb.indexOf(".k-combobox") < 0 && tb.indexOf(".k-picker") < 0, "textbox padding does not leak into dropdowns");
   const dd = M.buildCss(cd({ dropdown: { padding: 0.4 } }));
-  assert.ok(dd.indexOf(".k-combobox.k-picker .k-input-inner, .k-dropdownlist.k-picker .k-input-inner, .k-picker-md.k-picker .k-input-inner, .k-datepicker.k-picker .k-input-inner, .k-timepicker.k-picker .k-input-inner { padding-left: 4px !important; padding-right: 4px !important; }") >= 0, "dropdown inset 10 * 0.4 = 4");
+  assert.ok(dd.indexOf(".k-combobox.k-picker .k-input-inner, .k-dropdownlist.k-picker .k-input-inner, .k-picker-md.k-picker .k-input-inner, .k-datepicker.k-picker .k-input-inner, .k-timepicker.k-picker .k-input-inner, .k-datepicker.k-input .k-input-inner, .k-timepicker.k-input .k-input-inner { padding-left: 4px !important; padding-right: 4px !important; }") >= 0, "dropdown inset 10 * 0.4 = 4");
   assert.ok(dd.indexOf(".k-textbox") < 0, "dropdown padding does not leak into text fields");
+});
+
+test("buildCss: tag family compacts Options status tags without touching global checkboxes", () => {
+  const css = M.buildCss(cd({ tag: { height: 0.65, padding: 0.2, font: 0.8 } }));
+  assert.ok(css.indexOf(".ep-panel-card .ep-component-top-element.ep-tag, .ep-panel-card ep-tag.ep-component, .ep-panel-card ep-tag-item, .ep-panel-card .ep-component-item-element.ep-tag-item { height: 27.3px !important; min-height: 27.3px !important; }") >= 0,
+    "outer tag row compresses from 42px to 27.3px");
+  assert.ok(css.indexOf(".ep-panel-card .ep-component-top-element.ep-tag .ep-tag-item-container.ep-shape-container { height: 20.8px !important; min-height: 11.7px !important; margin-top: 3.25px !important; margin-bottom: 3.25px !important; padding-top: 3.25px !important; padding-bottom: 3.25px !important; }") >= 0,
+    "pill container height, margin, and vertical padding scale together");
+  assert.ok(css.indexOf(".ep-panel-card .ep-component-top-element.ep-tag .ep-tag-item-container.ep-shape-container { padding-left: 1px !important; padding-right: 6px !important; }") >= 0,
+    "horizontal padding removes the 30px right reserve when compacted");
+  assert.ok(css.indexOf(".ep-panel-card .ep-tag .ep-checkbox-label { margin-left: 5px !important; }") >= 0,
+    "checkbox-label reserve scales with tag padding");
+  assert.ok(css.indexOf(".ep-panel-card .ep-tag .ep-checkbox-label { height: 14.4px !important; min-height: 14.4px !important; font-size: 11.2px !important; line-height: 14.4px !important; }") >= 0,
+    "text-size slider reaches tag labels without leaving a shorter height from the height slider");
+  assert.equal(M.ruleCount(cd({ tag: { height: 0.65, padding: 0.2, font: 0.8 } })), 7,
+    "tag height(4) + padding(2) + font(1)");
+  const fam = M.FAMILIES.find((f) => f.key === "tag");
+  for (const dim of fam.dims) {
+    for (const r of dim.rules) {
+      assert.ok(r.sel.indexOf(".ep-panel-card") === 0,
+        "tag selector is scoped to panel-card tag chrome: " + r.sel);
+    }
+  }
 });
 
 test("buildCss: tree family scales nav item padding (base 6) + text font (base 14)", () => {
@@ -515,8 +611,8 @@ test("ruleCount: equals the number of emitted CSS rules", () => {
   assert.equal(M.ruleCount(cd({ grid: { rowHeight: 1.5 } })), 4, "grid rowHeight = 4 rules (td/th + cell + input + checkbox glyph)");
   assert.equal(M.ruleCount(cd({ grid: { font: 1.2 } })), 2, "grid font = 2 rules (header/td + .ep-grid-cell row text)");
   assert.equal(M.ruleCount(cd({ grid: { cellPad: 0.5 } })), 2, "grid cellPad = 2 rules (data + header)");
-  assert.equal(M.ruleCount(cd({ dropdown: { height: 1.4 } })), 21, "dropdown height = 21 rules (base 17 + shell-account adaptive host/inner/value stock pins + combobox/dropdownlist toggle-arrow recentre)");
-  assert.equal(M.ruleCount(cd({ textbox: { height: 0.7 } })), 9, "textbox height = 9 rules (inner + control + wrap + currency-$ top + search-icon + floated-label lift + login-view stock-pin x2 + login-view zoom)");
+  assert.equal(M.ruleCount(cd({ dropdown: { height: 1.4 } })), 24, "dropdown height = 24 rules (base 17 + shell-account adaptive host/inner/value stock pins + combobox/dropdownlist toggle-arrow recentre + panel-bar-header label-less recentre x3)");
+  assert.equal(M.ruleCount(cd({ textbox: { height: 0.7 } })), 12, "textbox height = 12 rules (inner + control + wrap + currency-$ top + search-icon + floated-label lift + login-view stock-pin x2 + login-view zoom + panel-bar-header search-box x3)");
   assert.equal(M.ruleCount(cd({ grid: { rowHeight: 1.5, font: 1.2 } })), 6, "rowHeight(4) + font(2)");
 });
 
@@ -531,7 +627,23 @@ function makeStyleEl() {
   };
 }
 
-function makeWorld({ hostname = "centralusdtedu00.epicorsaas.com", store = {} } = {}) {
+function makeTextArea({ scrollHeight = 80, height = "", visible = true } = {}) {
+  const attrs = {};
+  return {
+    nodeType: 1,
+    tagName: "TEXTAREA",
+    style: { height },
+    scrollHeight,
+    matches(sel) { return String(sel).indexOf("textarea") >= 0; },
+    getBoundingClientRect() { return visible ? { width: 240, height: 155 } : { width: 0, height: 0 }; },
+    setAttribute(k, v) { attrs[k] = String(v); },
+    getAttribute(k) { return Object.prototype.hasOwnProperty.call(attrs, k) ? attrs[k] : null; },
+    removeAttribute(k) { delete attrs[k]; },
+    _attrs: attrs
+  };
+}
+
+function makeWorld({ hostname = "centralusdtedu00.epicorsaas.com", store = {}, textareas = [] } = {}) {
   const headChildren = [];
   const head = {
     nodeType: 1, nodeName: "HEAD", children: headChildren,
@@ -545,6 +657,14 @@ function makeWorld({ hostname = "centralusdtedu00.epicorsaas.com", store = {} } 
     createElement() { return makeStyleEl(); },
     getElementById(id) { for (let i = 0; i < headChildren.length; i += 1) { if (headChildren[i].id === id) { return headChildren[i]; } } return null; },
     getElementsByTagName(t) { return String(t).toLowerCase() === "head" ? [head] : []; },
+    querySelectorAll(sel) {
+      const s = String(sel || "");
+      if (s.indexOf("textarea") < 0) return [];
+      if (s.indexOf("data-kinetic-padding-textarea-original-height") >= 0) {
+        return textareas.filter((ta) => ta.getAttribute("data-kinetic-padding-textarea-original-height") !== null);
+      }
+      return textareas;
+    },
     addEventListener() {}, removeEventListener() {}
   };
   const listeners = [];
@@ -586,7 +706,7 @@ test("runtime: a grid adjustment installs the <style> with scaled !important CSS
   assert.ok(appliedCss(W).indexOf("height: 36px !important;") >= 0);
 
   const m = readMarker(W);
-  assert.deepEqual(Object.keys(m).sort(), ["active", "adaptiveApplyAssists", "adaptiveApplyPending", "adaptiveApplySkips", "adjustments", "reasserts", "ruleCount", "spacerFactor", "spacerFound", "spacerScans", "spacerWrites", "version"]);
+  assert.deepEqual(Object.keys(m).sort(), ["active", "adaptiveApplyAssists", "adaptiveApplyPending", "adaptiveApplySkips", "adjustments", "fullWidth", "reasserts", "ruleCount", "spacerFactor", "spacerFound", "spacerScans", "spacerWrites", "textAreaAutoSize", "textAreaAutoSizeCount", "textAreaAutoSizeScans", "textAreaAutoSizeWrites", "version"]);
   assert.equal(m.active, true);
   assert.deepEqual(m.adjustments, [{ family: "grid", dim: "rowHeight", factor: 1.5 }]);
   assert.equal(m.ruleCount, 4);
@@ -595,6 +715,9 @@ test("runtime: a grid adjustment installs the <style> with scaled !important CSS
   assert.equal(m.adaptiveApplyAssists, 0);
   assert.equal(m.adaptiveApplySkips, 0);
   assert.equal(m.adaptiveApplyPending, 0);
+  assert.equal(m.textAreaAutoSize, false);
+  assert.equal(m.textAreaAutoSizeCount, 0);
+  assert.equal(m.fullWidth, false);
   assert.equal(typeof m.version, "string");
 });
 
@@ -667,6 +790,63 @@ test("runtime: live storage.onChanged rebuild (no reload) + revert removes <styl
   W._listeners.forEach((fn) => fn({ componentDensity: { newValue: {} } }, "local"));
   assert.equal(W.document.getElementById("kinetic-padding-control"), null, "reverted: no style element");
   assert.equal(readMarker(W).active, false);
+});
+
+test("runtime: full-width mode applies live and reverts without density sliders", () => {
+  const store = { componentDensity: {}, fullWidthEnabled: false };
+  const W = makeWorld({ store });
+  M.install(W);
+  assert.equal(W.document.getElementById("kinetic-padding-control"), null, "starts inert");
+
+  store.fullWidthEnabled = true;
+  W._listeners.forEach((fn) => fn({ fullWidthEnabled: { oldValue: false, newValue: true } }, "local"));
+  assert.ok(W.document.getElementById("kinetic-padding-control"), "style created live");
+  assert.ok(appliedCss(W).indexOf("ep-view.page-content.header-width") >= 0, "view-shell CSS applied");
+  assert.ok(appliedCss(W).indexOf("ep-panel-card-grid") >= 0, "panel-card-grid CSS applied");
+  assert.equal(readMarker(W).active, true);
+  assert.equal(readMarker(W).fullWidth, true);
+  assert.equal(readMarker(W).adjustments.length, 0, "not a spacing-slider adjustment");
+
+  store.fullWidthEnabled = false;
+  W._listeners.forEach((fn) => fn({ fullWidthEnabled: { oldValue: true, newValue: false } }, "local"));
+  assert.equal(W.document.getElementById("kinetic-padding-control"), null, "style removed after disabling");
+  assert.equal(readMarker(W).active, false);
+  assert.equal(readMarker(W).fullWidth, false);
+});
+
+test("runtime: text-area auto-size writes measured height live and restores exactly on OFF", () => {
+  const ta = makeTextArea({ scrollHeight: 115, height: "" });
+  const store = { componentDensity: {}, textAreaAutoSizeEnabled: true };
+  const W = makeWorld({ store, textareas: [ta] });
+  M.install(W);
+
+  assert.ok(W.document.getElementById("kinetic-padding-control"), "no-resize style is present while enabled");
+  assert.equal(ta.style.height, "115px", "height set from scrollHeight");
+  assert.equal(ta.getAttribute("data-kinetic-padding-textarea-original-height"), "", "original inline height captured");
+  assert.equal(readMarker(W).textAreaAutoSize, true);
+  assert.equal(readMarker(W).active, true);
+  assert.equal(readMarker(W).textAreaAutoSizeCount, 1);
+
+  store.textAreaAutoSizeEnabled = false;
+  W._listeners.forEach((fn) => fn({ textAreaAutoSizeEnabled: { oldValue: true, newValue: false } }, "local"));
+  assert.equal(W.document.getElementById("kinetic-padding-control"), null, "style removed after disabling");
+  assert.equal(ta.style.height, "", "original inline height restored");
+  assert.equal(ta.getAttribute("data-kinetic-padding-textarea-original-height"), null, "autosize bookkeeping removed");
+  assert.equal(readMarker(W).textAreaAutoSize, false);
+  assert.equal(readMarker(W).active, false);
+});
+
+test("runtime: text-area auto-size coexists with component density CSS", () => {
+  const ta = makeTextArea({ scrollHeight: 64 });
+  const W = makeWorld({ store: { componentDensity: { grid: { rowHeight: 1.2 } }, textAreaAutoSizeEnabled: true }, textareas: [ta] });
+  M.install(W);
+  const css = appliedCss(W);
+  assert.ok(css.indexOf(".k-grid td.k-table-td") >= 0, "density CSS still emitted");
+  assert.ok(css.indexOf("resize: none !important;") >= 0, "text-area rule appended");
+  assert.equal(ta.style.height, "64px");
+  assert.equal(readMarker(W).active, true);
+  assert.equal(readMarker(W).adjustments.length, 1);
+  assert.equal(readMarker(W).textAreaAutoSize, true);
 });
 
 test("runtime: storage.onChanged ignores non-local areas and unrelated keys", () => {

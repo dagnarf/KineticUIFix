@@ -468,3 +468,118 @@ test("BUFFER off (config absent) is byte-for-byte the original behavior", () => 
   assert.equal(bd.state.take, 80, "no config -> take untouched at 80");
   assert.equal(grid.view.length, 80, "no config -> window stays natural 80");
 });
+
+// ---- DENSITY ROW-HEIGHT SYNC (v3.1) ---------------------------------------------------------------
+// When padding-control compacts grid rows (dataset marker, grid.rowHeight factor != 1), Kinetic's
+// calculateModelRowHeight floor-clamps model.rowHeight to getImageRowHeight() (~25px), so Kendo's
+// position math runs against rows that really render ~15px. The hook measures the instance's own
+// rendered row and pins model.rowHeight + grid.rowHeight, patching the floor per instance.
+
+function denseWindow({ factor = 0.6, active = true } = {}) {
+  return {
+    document: {
+      documentElement: {
+        dataset: {
+          kineticPaddingControl: JSON.stringify({
+            version: "3.25.0",
+            active,
+            adjustments: [{ family: "grid", dim: "rowHeight", factor }],
+            ruleCount: 5
+          })
+        }
+      }
+    }
+  };
+}
+
+function makeEpGrid({ rowClientHeight = 16, modelRowHeight = 25, imageRowHeight = 25 } = {}) {
+  const eg = {
+    model: { rowHeight: modelRowHeight },
+    getCurrentRowElement(i) {
+      return i === 0 && rowClientHeight > 0 ? { clientHeight: rowClientHeight } : null;
+    },
+    getImageRowHeight() {
+      return imageRowHeight;
+    },
+    // Kinetic's own recalc (faithful to the live bundle: clientHeight-2 floored to getImageRowHeight()).
+    calculateModelRowHeight() {
+      const t = this.getCurrentRowElement(0);
+      if (t != null && t.clientHeight) {
+        const i = t.clientHeight - 2;
+        this.model.rowHeight = i > this.getImageRowHeight() ? i : this.getImageRowHeight();
+      }
+    }
+  };
+  return eg;
+}
+
+test("DENSITY SYNC: compacted rows pin model.rowHeight + grid.rowHeight to the measured height", () => {
+  const win = denseWindow({ factor: 0.6 });
+  const mod = loadModuleWithWindow(win);
+  const eg = makeEpGrid({ rowClientHeight: 16, modelRowHeight: 25 });
+  const { bd } = makeBinding(100, { take: 80, group: [], epGrid: eg });
+  rebindWithHook(mod, bd);
+  assert.equal(eg.model.rowHeight, 14, "model.rowHeight synced to clientHeight-2");
+  assert.equal(bd.grid.rowHeight, 14, "Kendo grid rowHeight synced too");
+  assert.equal(win.__KINETIC_GRID_FIX__.rowHeightSyncs, 1, "marker counts the sync");
+  assert.equal(win.__KINETIC_GRID_FIX__.lastRowHeightSync, 14, "marker records the synced value");
+});
+
+test("DENSITY SYNC: floor patch survives Kinetic's own calculateModelRowHeight recalc", () => {
+  const win = denseWindow({ factor: 0.6 });
+  const mod = loadModuleWithWindow(win);
+  const eg = makeEpGrid({ rowClientHeight: 16, modelRowHeight: 25 });
+  const { bd } = makeBinding(100, { take: 80, group: [], epGrid: eg });
+  rebindWithHook(mod, bd);
+  // Kinetic re-runs its measure-and-clamp after appends; the patched floor must keep the synced value.
+  eg.calculateModelRowHeight();
+  assert.equal(eg.model.rowHeight, 14, "recalc keeps the compacted height (floor defeated)");
+  // Healthy/uncompacted rows still clamp to the original floor through the patched getImageRowHeight.
+  assert.equal(eg.getImageRowHeight(), 14, "patched floor returns the real compacted height");
+});
+
+test("DENSITY SYNC: re-sync is idempotent (no marker double-count when already pinned)", () => {
+  const win = denseWindow({ factor: 0.6 });
+  const mod = loadModuleWithWindow(win);
+  const eg = makeEpGrid({ rowClientHeight: 16, modelRowHeight: 25 });
+  const { bd } = makeBinding(100, { take: 80, group: [], epGrid: eg });
+  rebindWithHook(mod, bd);
+  rebindWithHook(mod, bd);
+  assert.equal(eg.model.rowHeight, 14);
+  assert.equal(win.__KINETIC_GRID_FIX__.rowHeightSyncs, 1, "second rebind with synced model is a no-op");
+});
+
+test("DENSITY SYNC: inert when density factor is 1 / marker inactive / no rows", () => {
+  // factor 1 -> not dense
+  let win = denseWindow({ factor: 1 });
+  let mod = loadModuleWithWindow(win);
+  let eg = makeEpGrid({ rowClientHeight: 16, modelRowHeight: 25 });
+  let made = makeBinding(100, { take: 80, group: [], epGrid: eg });
+  rebindWithHook(mod, made.bd);
+  assert.equal(eg.model.rowHeight, 25, "factor 1 -> untouched");
+
+  // marker inactive -> not dense
+  win = denseWindow({ factor: 0.6, active: false });
+  mod = loadModuleWithWindow(win);
+  eg = makeEpGrid({ rowClientHeight: 16, modelRowHeight: 25 });
+  made = makeBinding(100, { take: 80, group: [], epGrid: eg });
+  rebindWithHook(mod, made.bd);
+  assert.equal(eg.model.rowHeight, 25, "inactive marker -> untouched");
+
+  // dense but no rendered rows yet -> skip (no zero/negative writes)
+  win = denseWindow({ factor: 0.6 });
+  mod = loadModuleWithWindow(win);
+  eg = makeEpGrid({ rowClientHeight: 0, modelRowHeight: 25 });
+  made = makeBinding(100, { take: 80, group: [], epGrid: eg });
+  rebindWithHook(mod, made.bd);
+  assert.equal(eg.model.rowHeight, 25, "no rows -> untouched");
+});
+
+test("DENSITY SYNC: no window / no marker -> hook is byte-for-byte the original leak-only behavior", () => {
+  const mod = loadModule();
+  const eg = makeEpGrid({ rowClientHeight: 16, modelRowHeight: 25 });
+  const { bd, grid } = makeBinding(4466, { take: 80, group: [], epGrid: eg });
+  rebindWithHook(mod, bd);
+  assert.equal(eg.model.rowHeight, 25, "no window -> sync never runs");
+  assert.equal(grid.view.length, 80, "leak protection unchanged");
+});
