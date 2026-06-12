@@ -1,6 +1,8 @@
 importScripts("grid-revirtualize-fix.js");
 importScripts("grid-blank-fix.js");
 importScripts("grid-checkbox-style-fix.js");
+importScripts("grid-group-data-fix.js");
+importScripts("grid-saved-layout-fix.js");
 
 (function(){
   "use strict";
@@ -49,6 +51,7 @@ importScripts("grid-checkbox-style-fix.js");
   var CUSTOM_DENSITY_SCRIPT_ID = "kinetic-grid-fix-density-custom-hosts";
   var CUSTOM_AUTOFIT_SCRIPT_ID = "kinetic-grid-fix-autofit-custom-hosts";
   var CUSTOM_HEADER_WRAP_SCRIPT_ID = "kinetic-grid-fix-header-wrap-custom-hosts";
+  var CUSTOM_COLUMN_PERSONALIZER_SCRIPT_ID = "kinetic-grid-fix-column-personalizer-custom-hosts";
   var CUSTOM_FOCUS_SCRIPT_ID = "kinetic-grid-fix-focus-scroll-custom-hosts";
   var DEFAULT_HOST_PATTERNS = ["*://*.epicorsaas.com/*"];
   var attachedTabs = {};
@@ -64,6 +67,16 @@ importScripts("grid-checkbox-style-fix.js");
   // stylesheet pinning the boolean checkbox glyph's size/alignment/color to the column's canonical
   // value so it never renders differently after a group/ungroup re-render. Same delivery as blankFix.
   var checkboxFix = self.__KINETIC_GRID_CHECKBOX_FIX___MODULE;
+  // The grouping-draws-an-empty-grid fix (src/grid-group-data-fix.js). Text-rewrites the EpGrid
+  // groupBindingData getter with a length-aware source chain so the new kendoGridGroupBinding template
+  // branch gets the loaded rows (DataView/loader grids otherwise group to "No records available.").
+  // Anchor-based rewrite -> debugger (M1) delivery only, riding the same gridFixEnabled toggle.
+  var groupDataFix = self.__KINETIC_GRID_GROUP_DATA_FIX__;
+  // The saved-layout-kills-dynamic-grids fix (src/grid-saved-layout-fix.js). Inserts the missing
+  // s.panelCardGrid guard into EpGrid initFromSavedLayout's filteringMode restore so grids without a
+  // panelCardGrid (e.g. SQL On The Fly's per-query Output grid) survive a saved layout that carries
+  // filteringMode instead of throwing during init and never rendering. Same delivery as groupDataFix.
+  var savedLayoutFix = self.__KINETIC_GRID_SAVED_LAYOUT_FIX__;
 
   function runtimeLastError(){
     return chrome.runtime && chrome.runtime.lastError ? chrome.runtime.lastError.message : null;
@@ -523,7 +536,7 @@ importScripts("grid-checkbox-style-fix.js");
         return;
       }
 
-      var ids = [CUSTOM_THEME_SCRIPT_ID, CUSTOM_DENSITY_SCRIPT_ID, CUSTOM_AUTOFIT_SCRIPT_ID, CUSTOM_HEADER_WRAP_SCRIPT_ID, CUSTOM_FOCUS_SCRIPT_ID];
+      var ids = [CUSTOM_THEME_SCRIPT_ID, CUSTOM_DENSITY_SCRIPT_ID, CUSTOM_AUTOFIT_SCRIPT_ID, CUSTOM_HEADER_WRAP_SCRIPT_ID, CUSTOM_COLUMN_PERSONALIZER_SCRIPT_ID, CUSTOM_FOCUS_SCRIPT_ID];
       chrome.scripting.unregisterContentScripts({ ids: ids }, function(){
         runtimeLastError();
         var matches = normalizeHostPatterns(state && state.customHostPatterns);
@@ -557,6 +570,13 @@ importScripts("grid-checkbox-style-fix.js");
             id: CUSTOM_HEADER_WRAP_SCRIPT_ID,
             matches: matches,
             js: ["src/grid-header-wrap.js"],
+            runAt: "document_start",
+            allFrames: false
+          },
+          {
+            id: CUSTOM_COLUMN_PERSONALIZER_SCRIPT_ID,
+            matches: matches,
+            js: ["src/column-personalizer.js"],
             runAt: "document_start",
             allFrames: false
           },
@@ -835,6 +855,24 @@ importScripts("grid-checkbox-style-fix.js");
         // Start from the rebind-patched bundle when that anchor matched; otherwise the original text.
         var rebindApplied = !!(result && result.applied && typeof result.patched === "string");
         var combined = rebindApplied ? result.patched : originalText;
+
+        // Rewrite the EpGrid groupBindingData getter (grouping-draws-an-empty-grid fix). Independent
+        // anchor, so it applies whether or not the rebind anchor matched.
+        if (groupDataFix && typeof groupDataFix.patchBundleText === "function"){
+          var groupDataResult = groupDataFix.patchBundleText(combined, { url: params.request.url });
+          if (groupDataResult && groupDataResult.applied && typeof groupDataResult.patched === "string"){
+            combined = groupDataResult.patched;
+          }
+        }
+
+        // Guard initFromSavedLayout's filteringMode restore (saved-layout-kills-dynamic-grids fix).
+        // Independent regex anchor, so it applies whether or not the other anchors matched.
+        if (savedLayoutFix && typeof savedLayoutFix.patchBundleText === "function"){
+          var savedLayoutResult = savedLayoutFix.patchBundleText(combined, { url: params.request.url });
+          if (savedLayoutResult && savedLayoutResult.applied && typeof savedLayoutResult.patched === "string"){
+            combined = savedLayoutResult.patched;
+          }
+        }
 
         // Always append the blank-fix watchdog installer when enabled — it is DOM-based and independent
         // of the rebind anchor, so it must apply even on bundles where the rebind anchor is absent.

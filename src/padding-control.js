@@ -55,7 +55,7 @@
 (function (root) {
   "use strict";
 
-  var VERSION = "3.31.0";                               // full-width AppStudio view/card mode (CDP-9100, 2026-06-10)
+  var VERSION = "3.37.0";                               // bare-text-cell grid rowHeight + header padding-block (CDP-9100, 2026-06-11)
   var STYLE_ID = "kinetic-padding-control";
   var MARKER_KEY = "__KINETIC_PADDING_CONTROL__";
   var DATASET_KEY = "kineticPaddingControl";            // -> attribute data-kinetic-padding-control
@@ -64,7 +64,12 @@
   var EPS = 1e-9;                                       // a factor within EPS of its default is "off"
   var TEXTAREA_SELECTOR = "ep-text-area textarea.k-textarea, .ep-text-area textarea.k-textarea";
   var TEXTAREA_ORIGINAL_HEIGHT_ATTR = "data-kinetic-padding-textarea-original-height";
+  var TEXTAREA_ORIGINAL_MAX_HEIGHT_ATTR = "data-kinetic-padding-textarea-original-max-height";
+  var TEXTAREA_ORIGINAL_OVERFLOW_Y_ATTR = "data-kinetic-padding-textarea-original-overflow-y";
   var TEXTAREA_AUTOSIZED_ATTR = "data-kinetic-padding-textarea-autosized";
+  var TEXTAREA_MAX_VIEWPORT_RATIO = 0.7;
+  var TEXTAREA_MAX_HEIGHT_PX = 720;
+  var TEXTAREA_MIN_HEIGHT_CAP_PX = 140;
   var FULL_WIDTH_CSS = [
     "ep-view.page-content.header-width, ep-view.page-content, .ep-component-top-element.ep-view, .ep-view-content { width: 100% !important; max-width: none !important; }",
     "#ep-view-header, #ep-view-header.ep-view-fixed-header { width: auto !important; max-width: none !important; right: 10px !important; }",
@@ -98,6 +103,18 @@
             // grids + headers (stock td/th ~24px on the Order-Entry size variant).
             { sel: ".k-grid td.k-table-td, .k-grid th.k-table-th", props: [
               { name: "height", base: 24 }, { name: "min-height", base: 24 }, { name: "line-height", base: 20 }
+            ] },
+            // BARE-TEXT-CELL VARIANT (dashboard/dynamic grids, e.g. SQL On The Fly's per-query Output
+            // grid): cells carry text directly on td.k-table-td — no .ep-grid-cell wrapper — and the
+            // page injects an `.ep-grid .k-grid td { height: 23px; line-height: 20px }` pin that
+            // LIVE-PROVEN beats the (0,2,1) !important rule above on these rows (row stuck at 25px
+            // while min-height/line-height from the same block landed; mechanism unidentified — the
+            // pin loses only once we outrank it on specificity). Same bases as the generic rule, so on
+            // wrapped grids this emits identical values and is a no-op; on bare-td grids it takes the
+            // row from the 23px pin to the scaled height (25 -> 15.4 at f=0.6, exact revert, live
+            // CDP-9100 2026-06-11).
+            { sel: ".ep-grid .k-grid tbody tr td.k-table-td", props: [
+              { name: "height", base: 24 }, { name: "line-height", base: 20 }
             ] },
             // THE REAL ROW-HEIGHT FLOOR in Epicor grids: the data cell wrapper is pinned by
             //   `.ep-grid .k-grid tr td .ep-grid-cell { line-height: 22px }`   (specificity 0,3,1)
@@ -157,6 +174,15 @@
             ] },
             { sel: ".ep-grid .k-grid th.k-header.k-table-th", props: [
               { name: "padding-left", base: 7 }, { name: "padding-right", base: 7 }
+            ] },
+            // Header VERTICAL inset. On bare-text-cell grids (SQL On The Fly Output) the th keeps
+            // Kendo's `.k-table-md .k-table-th` padding-block (8px), which the rowHeight th height
+            // rule cannot compress past (content-box: 12px line + 16px padding ≈ 30px header). Scale
+            // it with cell padding so the header band compacts with the cells (29.9 -> 18.7 at f=0.3,
+            // live CDP-9100 2026-06-11). Wrapped form grids share the same 8px Kendo base, so the
+            // f=1 emit matches stock there too.
+            { sel: ".ep-grid .k-grid thead tr th.k-table-th", props: [
+              { name: "padding-top", base: 8 }, { name: "padding-bottom", base: 8 }
             ] }
           ]
         },
@@ -182,19 +208,66 @@
       ]
     },
     {
+      // BUTTONS — Kinetic's real action buttons are `button.ep-button` with PINNED heights
+      // (ep-btn-size-medium 30px toolbar actions, ep-btn-size-small 22px card-footer actions; live
+      // CDP-9100 survey 2026-06-11 on OMMT3001 Details), not `.k-button` — the Kendo class only covers
+      // panel icon-buttons and dialog chrome. Because the height is a hard `height:`, padding scaling
+      // alone can never resize the main buttons: the Height dim scales the pin itself. Spacing scales
+      // the per-button margins (stock 5/10/5/5) that set toolbar rhythm. Click-target floors keep the
+      // compact end usable (medium >=18px, small >=14px) and a 2px right-margin floor keeps adjacent
+      // buttons from visually merging.
       key: "button", label: "Buttons", dims: [
+        {
+          key: "height", label: "Height", min: 0.6, max: 1.4, step: 0.05, def: 1,
+          rules: [
+            { sel: "button.ep-button.ep-btn-size-medium", props: [
+              { name: "height", base: 30, clampMin: 18 }
+            ] },
+            { sel: "button.ep-button.ep-btn-size-small", props: [
+              { name: "height", base: 22, clampMin: 14 }
+            ] }
+          ]
+        },
         {
           key: "padding", label: "Padding", min: 0.5, max: 2, step: 0.05, def: 1,
           rules: [
             { sel: ".k-button.k-button-md, .k-button.k-button-sm, .k-button.k-button-lg, .k-button", props: [
               { name: "padding-top", base: 4 }, { name: "padding-bottom", base: 4 }
+            ] },
+            { sel: "button.ep-button.ep-btn-size-medium", props: [
+              { name: "padding-left", base: 20, clampMin: 8 }, { name: "padding-right", base: 20, clampMin: 8 }
+            ] },
+            { sel: "button.ep-button.ep-btn-size-small", props: [
+              { name: "padding-left", base: 15, clampMin: 6 }, { name: "padding-right", base: 15, clampMin: 6 }
+            ] }
+          ]
+        },
+        {
+          key: "spacing", label: "Spacing", min: 0, max: 2, step: 0.05, def: 1,
+          rules: [
+            { sel: "button.ep-button", props: [
+              { name: "margin-top", base: 5 }, { name: "margin-bottom", base: 5 },
+              { name: "margin-left", base: 5 }, { name: "margin-right", base: 10, clampMin: 2 }
             ] }
           ]
         },
         {
           key: "font", label: "Text size", min: DIM_FONT.min, max: DIM_FONT.max, step: DIM_FONT.step, def: DIM_FONT.def,
           rules: [
-            { sel: ".k-button", props: [ { name: "font-size", base: 12 } ] }
+            { sel: ".k-button", props: [ { name: "font-size", base: 12 } ] },
+            // ep-buttons pin line-height:12 under both sizes; scale it with the font so enlarged text
+            // is not clipped by the stale 12px line box (flex centering keeps the label seated).
+            { sel: "button.ep-button.ep-btn-size-medium", props: [
+              { name: "font-size", base: 12 }, { name: "line-height", base: 12 }
+            ] },
+            { sel: "button.ep-button.ep-btn-size-small", props: [
+              { name: "font-size", base: 14 }, { name: "line-height", base: 12 }
+            ] },
+            // Inline button glyphs track the label size so icon/text proportion holds at both extremes.
+            // Epicor pins them per size class (medium 16px, small 14px) — keep that split or the first
+            // slider notch would JUMP small-button icons from 14 to ~16.
+            { sel: "button.ep-button.ep-btn-size-medium .mdi", props: [ { name: "font-size", base: 16 } ] },
+            { sel: "button.ep-button.ep-btn-size-small .mdi", props: [ { name: "font-size", base: 14 } ] }
           ]
         }
       ]
@@ -227,6 +300,19 @@
             ] },
             { sel: ".k-textbox.k-input, .k-numerictextbox.k-input, .k-maskedtextbox.k-input", props: [
               { name: "height", base: 40 }, { name: "min-height", base: 40 }
+            ] },
+            // DIRECT text inputs and Kendo numeric inner inputs do not share the wrapped `.k-input-inner`
+            // geometry that the stock 17px top padding was protecting. At the minimum 28px field height,
+            // leaving padding-top 17px creates an ~11px usable value band for an 18px line-height; Chrome
+            // shaves the bottom of the glyphs. Re-seat only these live-proven shapes: compact top padding
+            // to 14*f (9.8px at f=0.7), let the font slider own line-height, and keep the numeric child
+            // inside its host by cancelling Kendo's inherited translateY(-18px). The broader wrapped
+            // textbox rule above remains unchanged for the older clip-edge-safe shape.
+            { sel: ".ep-component-top-element.ep-text-box input.k-textbox.k-input", props: [
+              { name: "padding-top", base: 14 }
+            ] },
+            { sel: ".ep-component-top-element.ep-numeric-box .k-numerictextbox.k-input > .k-input-inner", props: [
+              { name: "transform", base: 0, unit: "", wrap: "none" }, { name: "padding-top", base: 14 }
             ] },
             { sel: ".ep-panel-card .k-floating-label-container:has(.k-textbox, .k-numerictextbox, .k-maskedtextbox)", props: [
               { name: "height", base: 40 }, { name: "min-height", base: 40 }
@@ -319,8 +405,8 @@
         {
           key: "font", label: "Text size", min: DIM_FONT.min, max: DIM_FONT.max, step: DIM_FONT.step, def: DIM_FONT.def,
           rules: [
-            { sel: ".k-textbox .k-input-inner, .k-numerictextbox .k-input-inner, .k-maskedtextbox .k-input-inner", props: [
-              { name: "font-size", base: 14 }
+            { sel: ".k-textbox .k-input-inner, .k-numerictextbox .k-input-inner, .k-maskedtextbox .k-input-inner, .ep-component-top-element.ep-text-box input.k-textbox.k-input", props: [
+              { name: "font-size", base: 14 }, { name: "line-height", base: 18 }
             ] },
             // Scale the summary "$" prefix font with the value font so they match size (else the unscaled
             // 14px $ sits visually lower than the smaller value digits).
@@ -337,10 +423,13 @@
           key: "padding", label: "Inner padding", min: 0.2, max: 1.5, step: 0.05, def: 1,
           rules: [
             { sel: ".k-textbox .k-input-inner, .k-numerictextbox .k-input-inner, .k-maskedtextbox .k-input-inner", props: [
-              { name: "padding-left", base: 10 }
+              { name: "padding-left", base: 10, clampMin: 6 }
             ] },
-            { sel: ".k-textbox .k-floating-label, .k-numerictextbox .k-floating-label", props: [
-              { name: "padding-left", base: 10 }, { name: "padding-right", base: 10 }
+            { sel: ".ep-component-top-element.ep-text-box input.k-textbox.k-input", props: [
+              { name: "padding-left", base: 10, clampMin: 6 }
+            ] },
+            { sel: ".k-textbox .k-floating-label, .k-numerictextbox .k-floating-label, .ep-component-top-element.ep-text-box .k-floating-label, .ep-component-top-element.ep-numeric-box .k-floating-label", props: [
+              { name: "padding-left", base: 10, clampMin: 6 }, { name: "padding-right", base: 10, clampMin: 6 }
             ] }
           ]
         }
@@ -379,6 +468,24 @@
             // clears it. Inert at factor 1 (the dim emits nothing), so the native 17 is untouched at stock.
             { sel: ".k-combobox.k-input, .k-dropdownlist.k-picker", props: [
               { name: "padding-top", base: 12 }
+            ] },
+            // PANEL-CARD EP-DROPDOWN VALUE RE-SEAT. Adaptive dropdown hosts in forms inherit Kendo
+            // translateY offsets on the inner span while the density rule also applies host padding-top.
+            // At f=0.7 that seats the selected value box partly above the 28px clipped host. Preserve the
+            // compact host height, zero the form-dropdown host pad, keep the inner/value box inside the
+            // host, and let the dropdown font slider own the final 14.4px line-height. This targets the
+            // normal form dropdown/combobox surface, while the login/settings/shell exceptions below keep
+            // their stock-pin behavior.
+            { sel: ".ep-component-top-element.ep-dropdown .k-dropdownlist.k-picker, .ep-component-top-element.ep-dropdown .k-combobox.k-picker, ep-combo-box .k-dropdownlist.k-picker, ep-combo-box .k-combobox.k-picker", props: [
+              { name: "padding-top", base: 0 }
+            ] },
+            { sel: ".ep-component-top-element.ep-dropdown .k-dropdownlist.k-picker > .k-input-inner, .ep-component-top-element.ep-dropdown .k-combobox.k-picker > .k-input-inner, ep-combo-box .k-dropdownlist.k-picker > .k-input-inner, ep-combo-box .k-combobox.k-picker > .k-input-inner", props: [
+              { name: "transform", base: 0, unit: "", wrap: "none" }
+            ] },
+            { sel: ".ep-component-top-element.ep-dropdown .k-input-value-text, ep-combo-box .k-input-value-text", props: [
+              { name: "height", base: 0, unit: "", wrap: "auto" },
+              { name: "padding-top", base: 0 },
+              { name: "transform", base: 0, unit: "", wrap: "none" }
             ] },
             // Date/time picker inputs carry their own larger value padding and escaped the combobox
             // value-pull rule. Scale the padding/line-height so compact date fields remain readable.
@@ -621,7 +728,8 @@
       // TAGS & OPTIONS — compact the pill-style option tags shown in panels such as Order Tracker's
       // "Options" section (Ready To Process / Ready To Fulfill / Hold). These are not ordinary stacked
       // checkboxes: each .ep-tag row is a 42px block containing a 32px flex pill with 5px vertical margins,
-      // 5px internal padding, a 30px right reserve, and an 18px checkbox label. Card fieldGap can remove
+      // 5px internal padding, a 30px right reserve, an 18px checkbox icon/label row, and a 25px label
+      // offset that clears the 18px absolute-positioned check icon. Card fieldGap can remove
       // the gap BETWEEN rows, but it cannot reduce this per-tag chrome. Keep the selectors scoped to
       // .ep-panel-card .ep-tag so global checkboxes and non-tag status fields retain their native affordance.
       key: "tag", label: "Tags & options", dims: [
@@ -632,16 +740,20 @@
               { name: "height", base: 42 }, { name: "min-height", base: 42 }
             ] },
             { sel: ".ep-panel-card .ep-component-top-element.ep-tag .ep-tag-item-container.ep-shape-container", props: [
-              { name: "height", base: 32 }, { name: "min-height", base: 18 },
-              { name: "margin-top", base: 5 }, { name: "margin-bottom", base: 5 },
-              { name: "padding-top", base: 5 }, { name: "padding-bottom", base: 5 }
+              // Native erp-tag keeps an 18px absolute-positioned icon, an 18px label row, and a
+              // 24px invisible checkbox hit area. Do not let compact mode shrink the pill content
+              // below that floor or the icon/label overlap and the checkbox appears detached.
+              { name: "height", base: 32, clampMin: 24 }, { name: "min-height", base: 18 },
+              { name: "margin-top", base: 21, offset: -12, clampMin: 0, clampMax: 4 },
+              { name: "margin-bottom", base: 21, offset: -12, clampMin: 0, clampMax: 4 },
+              { name: "padding-top", base: 5, clampMin: 3 }, { name: "padding-bottom", base: 5, clampMin: 3 }
             ] },
             { sel: ".ep-panel-card .ep-tag ep-check-box.check-box-shape, .ep-panel-card .ep-tag .ep-component-top-element.ep-check-box, .ep-panel-card .ep-tag .ep-label-container, .ep-panel-card .ep-tag .ep-checkbox-label", props: [
-              { name: "height", base: 18 }, { name: "min-height", base: 18 },
-              { name: "line-height", base: 18 }, { name: "font-size", base: 14 }
+              { name: "height", base: 18, clampMin: 18 }, { name: "min-height", base: 18, clampMin: 18 },
+              { name: "line-height", base: 18, clampMin: 18 }, { name: "font-size", base: 14 }
             ] },
             { sel: ".ep-panel-card .ep-tag .ep-component-top-element.ep-check-box input", props: [
-              { name: "height", base: 24 }, { name: "min-height", base: 24 }
+              { name: "height", base: 24, clampMin: 24 }, { name: "min-height", base: 24, clampMin: 24 }
             ] }
           ]
         },
@@ -652,7 +764,7 @@
               { name: "padding-left", base: 5 }, { name: "padding-right", base: 30 }
             ] },
             { sel: ".ep-panel-card .ep-tag .ep-checkbox-label", props: [
-              { name: "margin-left", base: 25 }
+              { name: "margin-left", base: 0, offset: 25 }
             ] }
           ]
         },
@@ -660,8 +772,8 @@
           key: "font", label: "Text size", min: DIM_FONT.min, max: 1.4, step: DIM_FONT.step, def: DIM_FONT.def,
           rules: [
             { sel: ".ep-panel-card .ep-tag .ep-checkbox-label", props: [
-              { name: "height", base: 18 }, { name: "min-height", base: 18 },
-              { name: "font-size", base: 14 }, { name: "line-height", base: 18 }
+              { name: "height", base: 18, clampMin: 18 }, { name: "min-height", base: 18, clampMin: 18 },
+              { name: "font-size", base: 14 }, { name: "line-height", base: 18, clampMin: 18 }
             ] }
           ]
         }
@@ -960,7 +1072,8 @@
       }
     }
     if (state.textAreaAutoSizeEnabled === true) {
-      lines.push(TEXTAREA_SELECTOR + " { resize: none !important; overflow-y: hidden !important; }");
+      lines.push(TEXTAREA_SELECTOR + " { resize: none !important; }");
+      lines.push("ep-view, .ep-view-content { overflow-y: auto !important; overscroll-behavior-y: auto !important; }");
     }
     if (state.fullWidthEnabled === true) {
       lines.push(FULL_WIDTH_CSS);
@@ -1062,6 +1175,50 @@
     return false;
   }
 
+  function isTextAreaControlNode(node) {
+    try {
+      if (!node || node.nodeType !== 1) { return false; }
+      if (node.matches && (node.matches(TEXTAREA_SELECTOR) || node.matches("ep-text-area, .ep-text-area"))) { return true; }
+      if (node.querySelector && node.querySelector(TEXTAREA_SELECTOR)) { return true; }
+    } catch (e) { /* ignore */ }
+    return false;
+  }
+
+  function isTextAreaControlTarget(node) {
+    try {
+      var cur = node;
+      var guard = 0;
+      while (cur && guard < 8) {
+        if (isTextAreaControlNode(cur)) { return true; }
+        cur = cur.parentElement || cur.parentNode;
+        guard += 1;
+      }
+      if (node && node.closest && node.closest("ep-text-area, .ep-text-area")) { return true; }
+    } catch (e) { /* ignore */ }
+    return false;
+  }
+
+  function mutationListHasTextAreaControl(nodes) {
+    try {
+      if (!nodes || !nodes.length) { return false; }
+      for (var i = 0; i < nodes.length && i < 16; i += 1) {
+        if (isTextAreaControlNode(nodes[i])) { return true; }
+      }
+    } catch (e) { /* ignore */ }
+    return false;
+  }
+
+  function isTextAreaMutationRelevant(muts) {
+    try {
+      for (var i = 0; i < muts.length; i += 1) {
+        var m = muts[i];
+        if (isTextAreaControlTarget(m.target)) { return true; }
+        if (mutationListHasTextAreaControl(m.addedNodes) || mutationListHasTextAreaControl(m.removedNodes)) { return true; }
+      }
+    } catch (e) { return true; }
+    return false;
+  }
+
   function installRuntime(W) {
     try {
       if (!W || typeof W !== "object" || !W.document) { return null; }
@@ -1093,8 +1250,11 @@
       var textAreaAutoSizeScans = 0;
       var textAreaAutoSizeCount = 0;
       var textAreaAutoSizeWrites = 0;
+      var textAreaAutoSizeCapped = 0;
+      var textAreaWheelForwards = 0;
       var textAreaTimer = null;
       var textAreaInputListener = null;
+      var textAreaWheelListener = null;
 
       function publishMarker() {
         try {
@@ -1114,8 +1274,10 @@
             adaptiveApplyPending: adaptiveApplyPending,
             textAreaAutoSize: state.textAreaAutoSizeEnabled === true,
             textAreaAutoSizeCount: textAreaAutoSizeCount,
+            textAreaAutoSizeCapped: textAreaAutoSizeCapped,
             textAreaAutoSizeScans: textAreaAutoSizeScans,
             textAreaAutoSizeWrites: textAreaAutoSizeWrites,
+            textAreaWheelForwards: textAreaWheelForwards,
             fullWidth: state.fullWidthEnabled === true
           };
           W[MARKER_KEY] = marker;
@@ -1258,7 +1420,23 @@
           if (ta.getAttribute(TEXTAREA_ORIGINAL_HEIGHT_ATTR) === null) {
             ta.setAttribute(TEXTAREA_ORIGINAL_HEIGHT_ATTR, (ta.style && ta.style.height) ? ta.style.height : "");
           }
+          if (ta.getAttribute(TEXTAREA_ORIGINAL_MAX_HEIGHT_ATTR) === null) {
+            ta.setAttribute(TEXTAREA_ORIGINAL_MAX_HEIGHT_ATTR, (ta.style && ta.style.maxHeight) ? ta.style.maxHeight : "");
+          }
+          if (ta.getAttribute(TEXTAREA_ORIGINAL_OVERFLOW_Y_ATTR) === null) {
+            ta.setAttribute(TEXTAREA_ORIGINAL_OVERFLOW_Y_ATTR, (ta.style && ta.style.overflowY) ? ta.style.overflowY : "");
+          }
         } catch (e) { /* ignore */ }
+      }
+
+      function textAreaHeightCap() {
+        try {
+          var viewport = Number(W.innerHeight || (D.documentElement && D.documentElement.clientHeight) || 0);
+          var cap = viewport > 0 ? viewport * TEXTAREA_MAX_VIEWPORT_RATIO : TEXTAREA_MAX_HEIGHT_PX;
+          cap = Math.min(TEXTAREA_MAX_HEIGHT_PX, cap);
+          cap = Math.max(TEXTAREA_MIN_HEIGHT_CAP_PX, cap);
+          return round2(cap);
+        } catch (e) { return TEXTAREA_MAX_HEIGHT_PX; }
       }
 
       function autoSizeTextArea(ta) {
@@ -1266,17 +1444,36 @@
           if (!isVisibleTextArea(ta) || !ta.style) { return false; }
           rememberTextAreaHeight(ta);
           ta.setAttribute(TEXTAREA_AUTOSIZED_ATTR, "true");
+          var scrollHost = scrollHostForTextArea(ta);
+          var scrollHostTop = scrollHost ? Number(scrollHost.scrollTop || 0) : 0;
           var previousHeight = ta.style.height || "";
-          ta.style.height = "1px";
+          var previousMaxHeight = ta.style.maxHeight || "";
+          var previousOverflowY = ta.style.overflowY || "";
           var next = Number(ta.scrollHeight || 0);
           if (!isFinite(next) || next <= 0) {
             var original = ta.getAttribute(TEXTAREA_ORIGINAL_HEIGHT_ATTR);
             ta.style.height = original || "";
+            if (scrollHost && scrollHostTop > 0 && Math.abs(Number(scrollHost.scrollTop || 0) - scrollHostTop) > 1) {
+              setForwardedScrollTop(scrollHost, scrollHostTop, scrollHostTop);
+            }
             return false;
           }
-          var height = round2(next) + "px";
-          ta.style.height = height;
-          if (previousHeight !== height) { textAreaAutoSizeWrites += 1; }
+          var cap = textAreaHeightCap();
+          var capped = next > cap + 1;
+          var target = capped ? cap : next;
+          var height = round2(target) + "px";
+          var maxHeight = round2(cap) + "px";
+          var overflowY = capped ? "auto" : "hidden";
+          if (previousHeight !== height) { ta.style.height = height; }
+          if (previousMaxHeight !== maxHeight) { ta.style.maxHeight = maxHeight; }
+          if (previousOverflowY !== overflowY) { ta.style.overflowY = overflowY; }
+          if (capped) { textAreaAutoSizeCapped += 1; }
+          if (previousHeight !== height || previousMaxHeight !== maxHeight || previousOverflowY !== overflowY) {
+            textAreaAutoSizeWrites += 1;
+          }
+          if (scrollHost && scrollHostTop > 0 && Math.abs(Number(scrollHost.scrollTop || 0) - scrollHostTop) > 1) {
+            setForwardedScrollTop(scrollHost, scrollHostTop, scrollHostTop);
+          }
           return true;
         } catch (e) { return false; }
       }
@@ -1289,11 +1486,18 @@
             try {
               var original = ta.getAttribute(TEXTAREA_ORIGINAL_HEIGHT_ATTR);
               if (ta.style) { ta.style.height = original || ""; }
+              var originalMax = ta.getAttribute(TEXTAREA_ORIGINAL_MAX_HEIGHT_ATTR);
+              if (ta.style) { ta.style.maxHeight = originalMax || ""; }
+              var originalOverflow = ta.getAttribute(TEXTAREA_ORIGINAL_OVERFLOW_Y_ATTR);
+              if (ta.style) { ta.style.overflowY = originalOverflow || ""; }
               ta.removeAttribute(TEXTAREA_ORIGINAL_HEIGHT_ATTR);
+              ta.removeAttribute(TEXTAREA_ORIGINAL_MAX_HEIGHT_ATTR);
+              ta.removeAttribute(TEXTAREA_ORIGINAL_OVERFLOW_Y_ATTR);
               ta.removeAttribute(TEXTAREA_AUTOSIZED_ATTR);
             } catch (eA) { /* ignore */ }
           }
           textAreaAutoSizeCount = 0;
+          textAreaAutoSizeCapped = 0;
         } catch (e) { /* ignore */ }
       }
 
@@ -1306,6 +1510,7 @@
           }
           var nodes = textAreaNodes();
           var count = 0;
+          textAreaAutoSizeCapped = 0;
           for (var i = 0; i < nodes.length; i += 1) {
             if (autoSizeTextArea(nodes[i])) { count += 1; }
           }
@@ -1320,6 +1525,70 @@
           syncTextAreas();
           publishMarker();
         }, 80);
+      }
+
+      function scrollHostForTextArea(ta) {
+        try {
+          var sels = [".ep-view-content", "ep-view", ".page-content", "body", "html"];
+          for (var i = 0; i < sels.length; i += 1) {
+            var host = null;
+            if (ta && ta.closest) { host = ta.closest(sels[i]); }
+            if (!host && D.querySelector) { host = D.querySelector(sels[i]); }
+            if (!host) { continue; }
+            var max = Number(host.scrollHeight || 0) - Number(host.clientHeight || 0);
+            if (isFinite(max) && max > 1) { return host; }
+          }
+        } catch (e) { /* ignore */ }
+        return null;
+      }
+
+      function setForwardedScrollTop(host, next, retryOnlyWhenNear) {
+        try {
+          var desired = Number(next || 0);
+          var guard = Number(retryOnlyWhenNear);
+          var hasGuard = isFinite(guard);
+          host.scrollTop = desired;
+          if (W.setTimeout) {
+            var retry = function () {
+              try {
+                var current = Number(host.scrollTop || 0);
+                if (Math.abs(current - desired) <= 1) { return; }
+                if (hasGuard && Math.abs(current - guard) > 1) { return; }
+                host.scrollTop = desired;
+              } catch (eT1) { /* ignore */ }
+            };
+            W.setTimeout(retry, 0);
+            W.setTimeout(retry, 80);
+          }
+        } catch (e) { /* ignore */ }
+      }
+
+      function forwardTextAreaBoundaryWheel(ev) {
+        try {
+          if (state.textAreaAutoSizeEnabled !== true || !hostAllowed(W, state)) { return; }
+          var target = ev && ev.target;
+          if (!target || !target.matches || !target.matches(TEXTAREA_SELECTOR)) { return; }
+          if (target.getAttribute && target.getAttribute(TEXTAREA_AUTOSIZED_ATTR) !== "true") { return; }
+          var deltaY = Number(ev.deltaY || 0);
+          if (!isFinite(deltaY) || Math.abs(deltaY) < 1) { return; }
+          var max = Number(target.scrollHeight || 0) - Number(target.clientHeight || 0);
+          if (!isFinite(max) || max <= 1) { return; }
+          var top = Number(target.scrollTop || 0);
+          var atBoundary = deltaY > 0 ? top >= max - 1 : top <= 1;
+          if (!atBoundary) { return; }
+          var host = scrollHostForTextArea(target);
+          if (!host) { return; }
+          var hostMax = Number(host.scrollHeight || 0) - Number(host.clientHeight || 0);
+          if (!isFinite(hostMax) || hostMax <= 1) { return; }
+          var before = Number(host.scrollTop || 0);
+          var next = Math.max(0, Math.min(hostMax, before + deltaY));
+          if (Math.abs(next - before) <= 0.5) { return; }
+          setForwardedScrollTop(host, next, before);
+          textAreaWheelForwards += 1;
+          if (ev.preventDefault) { ev.preventDefault(); }
+          if (ev.stopPropagation) { ev.stopPropagation(); }
+          publishMarker();
+        } catch (e) { /* ignore */ }
       }
 
       function apply() {
@@ -1508,6 +1777,18 @@
         } catch (e) { /* ignore */ }
       }
 
+      function installTextAreaWheelForwarding() {
+        try {
+          if (!D.addEventListener || textAreaWheelListener) { return; }
+          textAreaWheelListener = forwardTextAreaBoundaryWheel;
+          D.addEventListener("wheel", textAreaWheelListener, { capture: true, passive: false });
+        } catch (e) {
+          try {
+            if (D.addEventListener && textAreaWheelListener) { D.addEventListener("wheel", textAreaWheelListener, true); }
+          } catch (eFallback) { /* ignore */ }
+        }
+      }
+
       // 1) Initial state at document_start.
       readAndApply();
 
@@ -1517,6 +1798,7 @@
       // missing Epicor action. Scoped to ep-adaptive-mode picker hosts, not to any one shell panel.
       installAdaptiveApplyAssist();
       installTextAreaInputSync();
+      installTextAreaWheelForwarding();
 
       // 2) Live reactivity: rebuild immediately when componentDensity/textAreaAutoSizeEnabled/fullWidthEnabled changes.
       try {
@@ -1540,9 +1822,10 @@
         var watchRoot = D.documentElement || D.body;
         if (MO && watchRoot) {
           var obs = new MO(function (muts) {
-            if (isRelevant(muts)) { scheduleReassert(); }
+            var relevant = isRelevant(muts);
+            if (relevant) { scheduleReassert(); }
             if (gridRowHeightFactor(state) !== 1) { scheduleSpacerSync(); }
-            if (state.textAreaAutoSizeEnabled === true) { scheduleTextAreaSync(); }
+            if (state.textAreaAutoSizeEnabled === true && (relevant || isTextAreaMutationRelevant(muts))) { scheduleTextAreaSync(); }
           });
           obs.observe(watchRoot, { childList: true, subtree: true, attributes: true, attributeFilter: ["style", "class"] });
           observers.push(obs);
@@ -1582,6 +1865,11 @@
           }
           if (textAreaInputListener && D.removeEventListener) {
             try { D.removeEventListener("input", textAreaInputListener, true); } catch (eI) { /* ignore */ }
+          }
+          if (textAreaWheelListener && D.removeEventListener) {
+            try { D.removeEventListener("wheel", textAreaWheelListener, { capture: true, passive: false }); } catch (eW1) {
+              try { D.removeEventListener("wheel", textAreaWheelListener, true); } catch (eW2) { /* ignore */ }
+            }
           }
           var el = D.getElementById(STYLE_ID);
           if (el && el.parentNode) { el.parentNode.removeChild(el); }

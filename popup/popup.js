@@ -221,7 +221,9 @@
       { key: "font", label: "Text size", min: 0.8, max: 1.5, step: 0.05, def: 1 }
     ] },
     { key: "button", label: "Buttons", dims: [
+      { key: "height", label: "Height", min: 0.6, max: 1.4, step: 0.05, def: 1 },
       { key: "padding", label: "Padding", min: 0.5, max: 2, step: 0.05, def: 1 },
+      { key: "spacing", label: "Spacing", min: 0, max: 2, step: 0.05, def: 1 },
       { key: "font", label: "Text size", min: 0.8, max: 1.6, step: 0.05, def: 1 }
     ] },
     { key: "textbox", label: "Text fields", dims: [

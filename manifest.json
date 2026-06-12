@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Kinetic Grid Grouping Fix",
-  "version": "3.23.0",
+  "version": "3.25.0",
   "description": "Fixes Kinetic grid bugs; adds auto-size columns, full-width mode, scroll buffer, theming, and spacing. Default OFF.",
   "minimum_chrome_version": "114",
   "permissions": [
@@ -21,32 +21,62 @@
   },
   "content_scripts": [
     {
-      "matches": ["*://*.epicorsaas.com/*"],
-      "js": ["src/theme-control.js"],
+      "matches": [
+        "*://*.epicorsaas.com/*"
+      ],
+      "js": [
+        "src/theme-control.js"
+      ],
       "run_at": "document_start",
       "all_frames": false
     },
     {
-      "matches": ["*://*.epicorsaas.com/*"],
-      "js": ["src/padding-control.js"],
+      "matches": [
+        "*://*.epicorsaas.com/*"
+      ],
+      "js": [
+        "src/padding-control.js"
+      ],
       "run_at": "document_start",
       "all_frames": false
     },
     {
-      "matches": ["*://*.epicorsaas.com/*"],
-      "js": ["src/grid-autofit.js"],
+      "matches": [
+        "*://*.epicorsaas.com/*"
+      ],
+      "js": [
+        "src/grid-autofit.js"
+      ],
       "run_at": "document_start",
       "all_frames": false
     },
     {
-      "matches": ["*://*.epicorsaas.com/*"],
-      "js": ["src/grid-header-wrap.js"],
+      "matches": [
+        "*://*.epicorsaas.com/*"
+      ],
+      "js": [
+        "src/grid-header-wrap.js"
+      ],
       "run_at": "document_start",
       "all_frames": false
     },
     {
-      "matches": ["*://*.epicorsaas.com/*"],
-      "js": ["src/grid-focus-scroll-fix.js"],
+      "matches": [
+        "*://*.epicorsaas.com/*"
+      ],
+      "js": [
+        "src/column-personalizer.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "*://*.epicorsaas.com/*"
+      ],
+      "js": [
+        "src/grid-focus-scroll-fix.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN",
       "all_frames": false

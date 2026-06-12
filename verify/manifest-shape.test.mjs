@@ -115,6 +115,25 @@ test("manifest registers the grid-header-wrap content script ISOLATED at documen
   assert.ok(fs.existsSync(path.join(root, "src", "grid-header-wrap.js")), "src/grid-header-wrap.js exists");
 });
 
+test("manifest registers the column personalizer content script ISOLATED at document_start", () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
+
+  const entry = manifest.content_scripts.find(
+    (cs) => Array.isArray(cs.js) && cs.js.includes("src/column-personalizer.js")
+  );
+  assert.ok(entry, "an entry delivers src/column-personalizer.js");
+  assert.deepEqual(entry.js, ["src/column-personalizer.js"], "delivers exactly the column personalizer");
+  assert.deepEqual(entry.matches, ["*://*.epicorsaas.com/*"], "scoped to the already-granted Kinetic host");
+  assert.equal(entry.run_at, "document_start", "runs at document_start");
+  assert.equal(entry.all_frames, false, "top frame only");
+  assert.notEqual(entry.world, "MAIN", "column personalizer runs ISOLATED, never MAIN world");
+  assert.ok(!("world" in entry), "ISOLATED is expressed by omitting the world key");
+
+  const headerWrapEntry = manifest.content_scripts.find((cs) => Array.isArray(cs.js) && cs.js.includes("src/grid-header-wrap.js"));
+  assert.notEqual(entry, headerWrapEntry, "column personalizer + header-wrap are distinct entries");
+  assert.ok(fs.existsSync(path.join(root, "src", "column-personalizer.js")), "src/column-personalizer.js exists");
+});
+
 test("manifest registers the grid focus-scroll guard MAIN-world at document_start", () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
 
